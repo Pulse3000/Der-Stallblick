@@ -41,6 +41,7 @@ import com.example.viewmodel.StallViewModel
 fun LiveScreen(
     viewModel: StallViewModel,
     onOpenWache: () -> Unit,
+    onOpenStall3D: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val einstellungen by viewModel.streamSettings.collectAsState()
@@ -363,6 +364,43 @@ fun LiveScreen(
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "Brunst- & Kalbeerkennung",
+                    color = Color.White.copy(alpha = 0.5f),
+                    fontSize = 11.sp,
+                    modifier = Modifier.weight(1f),
+                )
+                Icon(
+                    imageVector = Icons.Default.ArrowForward,
+                    contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.4f),
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        }
+
+        // 5b · Stall-3D-Rundgang (three.js-Szene der Webapp im WebView)
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onOpenStall3D() }
+                .testTag("stall3d_link"),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+            shape = RoundedCornerShape(12.dp),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Stall in 3D",
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Rundgang durch die Herde",
                     color = Color.White.copy(alpha = 0.5f),
                     fontSize = 11.sp,
                     modifier = Modifier.weight(1f),

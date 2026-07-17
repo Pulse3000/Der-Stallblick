@@ -123,7 +123,16 @@ fun StallblickApp(viewModel: StallViewModel) {
                             launchSingleTop = true
                             restoreState = true
                         }
+                    },
+                    onOpenStall3D = {
+                        navController.navigate("stall3d") { launchSingleTop = true }
                     }
+                )
+            }
+            composable("stall3d") {
+                Stall3DScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() }
                 )
             }
             composable("dashboard") {
