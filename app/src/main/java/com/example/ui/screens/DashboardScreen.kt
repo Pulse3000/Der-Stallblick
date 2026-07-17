@@ -38,7 +38,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.KAMERAS
+import com.example.data.KameraRolle
+import com.example.data.KameraState
 import com.example.data.StallEvent
+import com.example.ui.components.KameraStreamView
 import com.example.viewmodel.StallViewModel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
@@ -2355,17 +2359,25 @@ fun BarnLiveStreamFeedContainer(
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
-    var selectedStall by remember { mutableStateOf(1) } // 1: stallwache (Abkalbebereich), 2: futterwache (Futtertisch)
+    var selectedStall by remember { mutableStateOf(1) } // 1: stallwache (Abkalbebereich), 2: futterwache (Futtertisch), 3: stallbox
     var isTransitioning by remember { mutableStateOf(false) }
     var isReloading by remember { mutableStateOf(false) }
     var isIrMode by remember { mutableStateOf(false) }
     var zoomScale by remember { mutableStateOf(1.0f) }
     var brightnessLevel by remember { mutableStateOf(0f) } // from -3f to +3f, default 0f
     var contrastBoost by remember { mutableStateOf(false) } // High Contrast / details booster
+    var streamNeuLadenTrigger by remember { mutableStateOf(0) }
 
     val analyzerLoading by viewModel.analyzerLoading.collectAsState()
     val analyzerThinking by viewModel.analyzerThinking.collectAsState()
     val analyzerResult by viewModel.analyzerResult.collectAsState()
+
+    // Echte Kamera-Streams aus der Stallwache (Bridge / Tuya-Cloud), sobald konfiguriert.
+    val streamEinstellungen by viewModel.streamEinstellungen.collectAsState()
+    val kameraStates by viewModel.kameraStates.collectAsState()
+    val gewaehlteKamera = KAMERAS[(selectedStall - 1).coerceIn(0, KAMERAS.size - 1)]
+    val echterStreamAktiv = streamEinstellungen.kameraBedienbar(gewaehlteKamera)
+    val gewaehlterKameraState = kameraStates[gewaehlteKamera.id]
 
     LaunchedEffect(selectedStall) {
         isTransitioning = true
@@ -2423,7 +2435,17 @@ fun BarnLiveStreamFeedContainer(
                     )
                 }
 
-                // Green LIVE Badge
+                // LIVE Badge – bei echten Streams State-Modell online | offline | laedt | instabil
+                val (badgeText, badgeColor) = if (echterStreamAktiv) {
+                    when (gewaehlterKameraState) {
+                        KameraState.ONLINE -> "LIVE FEED" to Color(0xFF2E7D32)
+                        KameraState.INSTABIL -> "INSTABIL" to Color(0xFFB26A00)
+                        KameraState.OFFLINE -> "OFFLINE" to Color(0xFFBA1A1A)
+                        else -> "VERBINDE…" to Color(0xFF64748B)
+                    }
+                } else {
+                    "SIMULATION" to Color(0xFF64748B)
+                }
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -2432,13 +2454,13 @@ fun BarnLiveStreamFeedContainer(
                         modifier = Modifier
                             .size(6.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFF2E7D32).copy(alpha = livePulseAlpha))
+                            .background(badgeColor.copy(alpha = livePulseAlpha))
                     )
                     Text(
-                        text = "LIVE FEED",
+                        text = badgeText,
                         fontSize = 8.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2E7D32)
+                        color = badgeColor
                     )
                 }
             }
@@ -2452,7 +2474,7 @@ fun BarnLiveStreamFeedContainer(
             ) {
                 StallTabButton(
                     id = 1,
-                    label = "Kamera: stallwache",
+                    label = "stallwache",
                     icon = Icons.Default.Videocam,
                     isSelected = selectedStall == 1,
                     onClick = { selectedStall = 1 },
@@ -2460,10 +2482,18 @@ fun BarnLiveStreamFeedContainer(
                 )
                 StallTabButton(
                     id = 2,
-                    label = "Kamera: futterwache",
+                    label = "futterwache",
                     icon = Icons.Default.Videocam,
                     isSelected = selectedStall == 2,
                     onClick = { selectedStall = 2 },
+                    modifier = Modifier.weight(1f)
+                )
+                StallTabButton(
+                    id = 3,
+                    label = "stallbox",
+                    icon = Icons.Default.Videocam,
+                    isSelected = selectedStall == 3,
+                    onClick = { selectedStall = 3 },
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -2478,7 +2508,36 @@ fun BarnLiveStreamFeedContainer(
                     .clip(RoundedCornerShape(16.dp))
                     .border(1.dp, Color(0xFFC5C6D0), RoundedCornerShape(16.dp))
             ) {
-                // Drawing Stream content
+                if (echterStreamAktiv) {
+                    // Echter Kamera-Stream (Bridge-HLS bzw. Tuya-Cloud mit Bridge-Fallback)
+                    KameraStreamView(
+                        kamera = gewaehlteKamera,
+                        rolle = KameraRolle.HAUPT,
+                        einstellungen = streamEinstellungen,
+                        onState = { id, state -> viewModel.meldeKameraState(id, state) },
+                        neuLadenTrigger = streamNeuLadenTrigger,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                scaleX = zoomScale
+                                scaleY = zoomScale
+                            }
+                    )
+                    if (brightnessLevel > 0f) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.White.copy(alpha = (brightnessLevel * 0.12f).coerceAtMost(0.6f)))
+                        )
+                    } else if (brightnessLevel < 0f) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = (-brightnessLevel * 0.12f).coerceAtMost(0.8f)))
+                        )
+                    }
+                } else {
+                // Drawing Stream content (Simulation, solange keine Stream-Quelle konfiguriert ist)
                 Canvas(
                     modifier = Modifier
                         .fillMaxSize()
@@ -2593,6 +2652,7 @@ fun BarnLiveStreamFeedContainer(
                         radius = 6f,
                         center = Offset(30f, 30f)
                     )
+                }
                 }
 
                 // Timecode Overlay top right

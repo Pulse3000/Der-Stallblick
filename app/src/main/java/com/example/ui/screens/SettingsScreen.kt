@@ -21,6 +21,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.BridgeTyp
 import com.example.viewmodel.StallViewModel
 
 @Composable
@@ -35,11 +36,15 @@ fun SettingsScreen(
     val cooldownMinutes by viewModel.cooldownMinutes.collectAsState()
     val edgeStatus by viewModel.edgeStatus.collectAsState()
     val selectedTheme by viewModel.selectedTheme.collectAsState()
+    val streamEinstellungen by viewModel.streamEinstellungen.collectAsState()
 
     var hostInput by remember { mutableStateOf(edgeHost) }
     var tokenInput by remember { mutableStateOf(edgeToken) }
     var apiKeyInput by remember { mutableStateOf(customApiKey) }
     var showApiKey by remember { mutableStateOf(false) }
+    var bridgeUrlInput by remember { mutableStateOf(streamEinstellungen.bridgeUrl) }
+    var bridgeTypInput by remember { mutableStateOf(streamEinstellungen.bridgeTyp) }
+    var stallwacheUrlInput by remember { mutableStateOf(streamEinstellungen.stallwacheUrl) }
 
     var saveStatusMsg by remember { mutableStateOf<String?>(null) }
 
@@ -207,6 +212,80 @@ fun SettingsScreen(
                         ) {
                             Text(if (edgeStatus == "AKTIV") "Silent-Modus aktivieren" else "Analyse aktivieren")
                         }
+                    }
+                }
+            }
+        }
+
+        // --- Kamera-Streams (Stallwache-Portierung) ---
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(Icons.Default.Videocam, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Text(
+                            text = "Kamera-Streams (Live-Bild)",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        )
+                    }
+
+                    Text(
+                        text = "Quellen wie in der Stallwache-Web-App: Die Bridge (go2rtc oder MediaMTX hinter dem Cloudflare-Tunnel) liefert HLS und Snapshots. Tuya-fähige Kameras (Futterwache, Stallbox) holen ihre kurzlebige HLS-URL über die Stallwache-Web-App und fallen bei Fehlern automatisch auf die Bridge zurück.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+
+                    OutlinedTextField(
+                        value = bridgeUrlInput,
+                        onValueChange = { bridgeUrlInput = it },
+                        modifier = Modifier.fillMaxWidth().testTag("bridge_url_input"),
+                        label = { Text("Bridge-URL (https://…, Cloudflare-Tunnel)") },
+                        placeholder = { Text("https://stallwache.example.com") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(8.dp)
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(BridgeTyp.GO2RTC, BridgeTyp.MEDIAMTX).forEach { typ ->
+                            FilterChip(
+                                selected = bridgeTypInput == typ,
+                                onClick = { bridgeTypInput = typ },
+                                label = { Text(if (typ == BridgeTyp.GO2RTC) "go2rtc (Default)" else "MediaMTX") },
+                                modifier = Modifier.weight(1f).testTag("bridge_typ_${typ.id}")
+                            )
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = stallwacheUrlInput,
+                        onValueChange = { stallwacheUrlInput = it },
+                        modifier = Modifier.fillMaxWidth().testTag("stallwache_url_input"),
+                        label = { Text("Stallwache-Web-App-URL (für Tuya-Cloud-Streams)") },
+                        placeholder = { Text("https://die-stallwache.vercel.app") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(8.dp)
+                    )
+
+                    Button(
+                        onClick = {
+                            viewModel.updateStreamEinstellungen(bridgeUrlInput, bridgeTypInput, stallwacheUrlInput)
+                            saveStatusMsg = "Kamera-Stream-Quellen gespeichert!"
+                        },
+                        modifier = Modifier.fillMaxWidth().testTag("save_stream_btn")
+                    ) {
+                        Text("Stream-Quellen speichern")
                     }
                 }
             }

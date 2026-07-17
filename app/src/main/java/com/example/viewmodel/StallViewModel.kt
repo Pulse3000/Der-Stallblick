@@ -59,6 +59,20 @@ class StallViewModel(application: Application) : AndroidViewModel(application) {
     private val _edgeStatus = MutableStateFlow("AKTIV") // "AKTIV", "SILENT" (Modellpfad leer), "OFFLINE"
     val edgeStatus = _edgeStatus.asStateFlow()
 
+    // --- Kamera-Streams (Portierung aus Die_Stallwache, lib/config.ts) ---
+    private val _streamEinstellungen = MutableStateFlow(
+        StreamEinstellungen(
+            bridgeUrl = prefs.getString("bridge_url", "") ?: "",
+            bridgeTyp = BridgeTyp.vonId(prefs.getString("bridge_typ", BridgeTyp.GO2RTC.id)),
+            stallwacheUrl = prefs.getString("stallwache_url", "") ?: "",
+        )
+    )
+    val streamEinstellungen = _streamEinstellungen.asStateFlow()
+
+    /** Zustand je Kamera (online | offline | laedt | instabil), gemeldet von KameraStreamView. */
+    private val _kameraStates = MutableStateFlow<Map<String, KameraState>>(emptyMap())
+    val kameraStates = _kameraStates.asStateFlow()
+
     // --- Chat State (Gemini Flash-Lite) ---
     private val _chatMessages = MutableStateFlow<List<ChatMessage>>(
         listOf(
@@ -124,6 +138,23 @@ class StallViewModel(application: Application) : AndroidViewModel(application) {
             .putString("edge_host", host)
             .putString("edge_token", token)
             .apply()
+    }
+
+    fun updateStreamEinstellungen(bridgeUrl: String, bridgeTyp: BridgeTyp, stallwacheUrl: String) {
+        _streamEinstellungen.value = StreamEinstellungen(
+            bridgeUrl = bridgeUrl.trim(),
+            bridgeTyp = bridgeTyp,
+            stallwacheUrl = stallwacheUrl.trim(),
+        )
+        prefs.edit()
+            .putString("bridge_url", bridgeUrl.trim())
+            .putString("bridge_typ", bridgeTyp.id)
+            .putString("stallwache_url", stallwacheUrl.trim())
+            .apply()
+    }
+
+    fun meldeKameraState(kameraId: String, state: KameraState) {
+        _kameraStates.value = _kameraStates.value + (kameraId to state)
     }
 
     fun updateCustomApiKey(key: String) {
