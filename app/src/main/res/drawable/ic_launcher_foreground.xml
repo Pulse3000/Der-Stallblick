@@ -1,0 +1,28 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Outer Shield or Frame -->
+    <path
+        android:fillColor="#81C784"
+        android:pathData="M54,14 C34,14 26,24 26,44 C26,72 54,94 54,94 C54,94 82,72 82,44 C82,24 74,14 54,14 Z" />
+    
+    <!-- Stylized Cow head silhouette inside the shield -->
+    <path
+        android:fillColor="#101411"
+        android:pathData="M54,28 C51,28 48,30 46,33 L42,33 C34,33 34,40 38,40 L44,40 L45,46 C45,56 63,56 63,46 L64,40 L70,40 C74,40 74,33 66,33 L62,33 C60,30 57,28 54,28 Z" />
+    
+    <!-- Horns of the cow -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M42,33 C42,24 48,22 48,22 C48,22 44,27 45,33 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M66,33 C66,24 60,22 60,22 C60,22 64,27 63,33 Z" />
+
+    <!-- Digital Scanner Eye ring -->
+    <path
+        android:fillColor="#FF5252"
+        android:pathData="M54,58 C51,58 49,56 49,53 C49,50 51,48 54,48 C57,48 59,50 59,53 C59,56 57,58 54,58 Z" />
+</vector>

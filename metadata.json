@@ -1,0 +1,6 @@
+{
+  "name": "Stallblick",
+  "description": "KI-Wache-Agent zur automatischen Kalbe- und Brunstüberwachung (Betrieb: Oberer Stollenhof).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
