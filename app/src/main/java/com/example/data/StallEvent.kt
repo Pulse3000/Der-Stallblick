@@ -13,7 +13,9 @@ data class StallEvent(
     val nachricht: String,
     val timestamp: Long = System.currentTimeMillis(),
     val konfidenz: Double? = null,
-    val resolved: Boolean = false
+    val resolved: Boolean = false,
+    /** UUID des Ereignisses in der Stallblick-Webapp (GET /api/events) – verhindert Duplikate beim Cloud-Sync. */
+    val remoteId: String? = null
 ) : Serializable {
     companion object {
         fun getPrefilledEvents(): List<StallEvent> {

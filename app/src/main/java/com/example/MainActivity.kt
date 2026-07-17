@@ -49,10 +49,13 @@ fun StallblickApp(viewModel: StallViewModel) {
     val navController = rememberNavController()
 
     val activeAlert by viewModel.activeAlert.collectAsState()
+    val liveVollbild by viewModel.liveVollbild.collectAsState()
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         bottomBar = {
+            // Im Kamera-Vollbild verschwindet die Navigation (wie in der Webapp).
+            if (liveVollbild) return@Scaffold
             NavigationBar(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -64,6 +67,7 @@ fun StallblickApp(viewModel: StallViewModel) {
                 val currentRoute = navBackStackEntry?.destination?.route
 
                 val navItems = listOf(
+                    NavItem("live", "Live", Icons.Default.Videocam, Icons.Outlined.Videocam),
                     NavItem("dashboard", "KI-Wache", Icons.Default.Dns, Icons.Outlined.Dns),
                     NavItem("herd", "Herde", Icons.Default.Pets, Icons.Outlined.Pets),
                     NavItem("diagnose", "KI-Diagnose", Icons.Default.Psychology, Icons.Outlined.Psychology),
@@ -78,7 +82,7 @@ fun StallblickApp(viewModel: StallViewModel) {
                         onClick = {
                             if (currentRoute != item.route) {
                                 navController.navigate(item.route) {
-                                    popUpTo("dashboard") { saveState = true }
+                                    popUpTo("live") { saveState = true }
                                     launchSingleTop = true
                                     restoreState = true
                                 }
@@ -105,11 +109,23 @@ fun StallblickApp(viewModel: StallViewModel) {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = "dashboard",
+            startDestination = "live",
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
+            composable("live") {
+                LiveScreen(
+                    viewModel = viewModel,
+                    onOpenWache = {
+                        navController.navigate("dashboard") {
+                            popUpTo("live") { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
+                )
+            }
             composable("dashboard") {
                 DashboardScreen(viewModel = viewModel)
             }

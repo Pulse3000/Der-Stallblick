@@ -1,17 +1,55 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# 🐄 Der Stallblick — Android-App
 
-# Run and deploy your AI Studio app
+Native Android-Version von **Stallblick** (Repo
+[Die-Stallwache](https://github.com/Pulse3000/Die_Stallwache)): Live-Blick auf
+die Stallkameras plus KI-Wache für Brunst- und Kalbeerkennung. Betrieb:
+Oberer Stollenhof.
 
-This contains everything you need to run your app locally.
+## Was die App kann
 
-View your app in AI Studio: https://ai.studio/apps/6479eff3-d43a-4abb-9a0c-ea934304f02a
+| Tab | Inhalt |
+| --- | --- |
+| **Live** | Echte Kamera-Streams (Port des Web-Hauptscreens): Stallwache über die go2rtc/MediaMTX-Bridge (HLS via ExoPlayer), Futterwache & Stallbox über die Tuya-Cloud. Rollenwechsel ohne Stream-Neuaufbau, Vollbild, Snapshot in die Galerie, Statusblock, Ereignisliste. |
+| **KI-Wache** | Alarm-Dashboard; synchronisiert die echten Ereignisse der Webapp (`GET /api/events`) in die lokale Room-DB (Dedupe über `remoteId`). |
+| **Herde / KI-Diagnose / Assistent** | Kuh-Verwaltung, Gemini-Diagnose, Stall-Chat. |
+| **Konfig.** | Stallblick-Cloud-Login (`STALLBLICK_PASSWORT`), Bridge-URL & -Typ, Stream-Namen, direkte Tuya-OpenAPI-Zugangsdaten, Gemini-Key, Themes. |
+
+## So funktionieren die Kamera-Streams in der APK
+
+Anders als im Browser gibt es nativ kein CORS und kein hls.js — **ExoPlayer
+(Media3) spielt HLS direkt ab**:
+
+```
+Stallwache:    Tapo ──RTSP──▶ Bridge (go2rtc/MediaMTX) ──HLS──▶ Cloudflare Tunnel ──▶ ExoPlayer
+Futterwache/   Tuya-Cloud ──▶ 1) Webapp /api/<kamera>/stream (Session-Cookie, Proxy)
+Stallbox:                     2) direkt Tuya-OpenAPI (HMAC-SHA256, kurzlebige HLS-URL)
+                              3) Fallback: Bridge-HLS
+```
+
+* **go2rtc**: HLS `BRIDGE/api/stream.m3u8?src=<name>`, Vorschau per
+  Snapshot-Polling `BRIDGE/api/frame.jpeg?src=<name>`.
+* **MediaMTX**: HLS `BRIDGE/<name>/index.m3u8`, Vorschau per HEAD-Status-Ping
+  (kein JPEG-Endpoint).
+* **Tuya-URLs laufen ab** → bei Player-Fehlern wird automatisch eine frische
+  URL angefordert (exponentielles Backoff, Bridge-Fallback wie in der Webapp).
+* Der Webapp-Proxyweg nutzt denselben OkHttp-Client wie der Login, damit das
+  `stallblick_session`-Cookie auch für die Videosegmente mitgesendet wird.
+* `android:usesCleartextTraffic="true"` erlaubt Bridges im Stall-LAN
+  (`http://192.168.x.x:1984`) ohne Tunnel.
+
+## Einrichtung in der App (Tab „Konfig.")
+
+1. **Stallblick Cloud**: Webapp-URL (Default `https://die-stallwache.vercel.app`)
+   und das gemeinsame Stallblick-Passwort → „Anmelden". Damit laufen
+   Futterwache/Stallbox-Streams und der KI-Wache-Ereignis-Sync.
+2. **Kamera-Bridge**: Bridge-URL (Cloudflare-Tunnel-Hostname oder LAN-IP),
+   Bridge-Typ (go2rtc/MediaMTX), optional abweichende Stream-Namen.
+3. **Tuya direkt** (optional, ohne Webapp): Access ID/Secret des
+   Tuya-Cloud-Projekts + Geräte-IDs von Futterwache/Stallbox.
 
 ## Run Locally
 
 **Prerequisites:**  [Android Studio](https://developer.android.com/studio)
-
 
 1. Open Android Studio
 2. Select **Open** and choose the directory containing this project

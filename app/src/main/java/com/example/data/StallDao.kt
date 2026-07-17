@@ -29,6 +29,9 @@ interface StallDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertEvent(event: StallEvent)
 
+    @Query("SELECT COUNT(*) FROM stall_events WHERE remoteId = :remoteId")
+    suspend fun countEventsByRemoteId(remoteId: String): Int
+
     @Query("DELETE FROM stall_events WHERE id = :id")
     suspend fun deleteEventById(id: Int)
 
