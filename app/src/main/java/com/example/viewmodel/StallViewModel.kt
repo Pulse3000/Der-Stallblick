@@ -415,6 +415,10 @@ class StallViewModel(application: Application) : AndroidViewModel(application) {
             repository.deleteReportById(report.id)
         }
     }
+
+    fun clearAnalyzerResult() {
+        _analyzerResult.value = null
+    }
 }
 
 data class ChatMessage(

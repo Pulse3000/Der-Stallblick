@@ -11,7 +11,7 @@ import kotlinx.coroutines.launch
 
 @Database(
     entities = [Cow::class, StallEvent::class, AnalysisReport::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -29,6 +29,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "stallblick_database"
                 )
+                .fallbackToDestructiveMigration()
                 .addCallback(AppDatabaseCallback(scope))
                 .build()
                 INSTANCE = instance

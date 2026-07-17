@@ -7,6 +7,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -23,12 +25,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -78,13 +82,400 @@ fun DashboardScreen(
     val totalBirthsToday = events.count { (it.typ == "austreibung" || it.typ == "eskalation") && it.timestamp >= todayStart }
     val totalHeatsToday = events.count { it.typ == "brunstverdacht" && it.timestamp >= todayStart }
 
-    LazyColumn(
-        modifier = modifier
-            .fillMaxSize()
-            .background(Color(0xFFFDFBFF))
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
+    // Floating pulsing alerts states
+    var activeToastEvent by remember { mutableStateOf<StallEvent?>(null) }
+    
+    LaunchedEffect(viewModel) {
+        viewModel.newIngestedEvent.collect { event ->
+            activeToastEvent = event
+            delay(5000) // Pulse alert toast for 5 seconds
+            activeToastEvent = null
+        }
+    }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse_alert")
+    val toastPulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.4f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(600, easing = EaseInOutSine),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "toastPulse"
+    )
+
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val isWideScreen = maxWidth >= 720.dp
+        
+        if (isWideScreen) {
+            val scrollState = rememberScrollState()
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xFFF8FAFC))
+                    .verticalScroll(scrollState)
+                    .padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp)
+            ) {
+                // Ingest notification inside Widescreen
+                AnimatedVisibility(
+                    visible = ingestSimulation != null,
+                    enter = fadeIn() + slideInVertically(),
+                    exit = fadeOut() + slideOutVertically()
+                ) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFD8E2FF)),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                color = Color(0xFF005AC1),
+                                strokeWidth = 2.dp
+                            )
+                            Text(
+                                text = ingestSimulation ?: "",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                color = Color(0xFF001D3E)
+                            )
+                        }
+                    }
+                }
+
+                // Widescreen Header Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "Stallblick",
+                            style = MaterialTheme.typography.headlineLarge.copy(
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = (-0.75).sp
+                            ),
+                            color = Color(0xFF0F172A)
+                        )
+                        Text(
+                            text = "OBERER STOLLENHOF • KI-WACHE DASHBOARD",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.5.sp
+                            ),
+                            color = Color(0xFF64748B)
+                        )
+                    }
+
+                    val pulseTransition = rememberInfiniteTransition(label = "pulse")
+                    val pulseAlpha by pulseTransition.animateFloat(
+                        initialValue = 0.4f,
+                        targetValue = 1.0f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(1000, easing = LinearEasing),
+                            repeatMode = RepeatMode.Reverse
+                        ),
+                        label = "pulseAlpha"
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(if (globalWatchMode) Color(0xFFD8E2FF) else Color(0xFFF3F3F3))
+                            .clickable { viewModel.toggleWachModusGlobal(!globalWatchMode) }
+                            .padding(horizontal = 14.dp, vertical = 8.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (globalWatchMode) Color(0xFF005AC1).copy(alpha = pulseAlpha)
+                                        else Color(0xFF74777F)
+                                    )
+                            )
+                            Text(
+                                text = if (globalWatchMode) "KI-WACHE AKTIV" else "WACHE INAKTIV",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.5.sp
+                                ),
+                                color = if (globalWatchMode) Color(0xFF001D3E) else Color(0xFF44474E)
+                            )
+                        }
+                    }
+                }
+
+                // Bento-style 2-Column Grid Layout (Tailwind Grid Mockup)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(20.dp)
+                ) {
+                    // LEFT COLUMN (Real-time feeds and alerts)
+                    Column(
+                        modifier = Modifier.weight(1.2f),
+                        verticalArrangement = Arrangement.spacedBy(18.dp)
+                    ) {
+                        BarnLiveStreamFeedContainer(
+                            viewModel = viewModel,
+                            bertaCow = bertaCow,
+                            zeldaCow = zeldaCow
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.List,
+                                    contentDescription = "Event Log",
+                                    tint = Color(0xFF475569)
+                                )
+                                Text(
+                                    text = "Letzte Ereignisse",
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = Color(0xFF1E293B)
+                                )
+                            }
+
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                FilterChip(
+                                    selected = eventFilter == "ALL",
+                                    onClick = { eventFilter = "ALL" },
+                                    label = { Text("Alle", fontSize = 11.sp, fontWeight = FontWeight.Medium) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = Color(0xFFD8E2FF),
+                                        selectedLabelColor = Color(0xFF001D3E)
+                                    )
+                                )
+                                FilterChip(
+                                    selected = eventFilter == "CRITICAL",
+                                    onClick = { eventFilter = "CRITICAL" },
+                                    label = { Text("Alarme", fontSize = 11.sp, fontWeight = FontWeight.Medium) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = Color(0xFFFFDAD6),
+                                        selectedLabelColor = Color(0xFF410002)
+                                    )
+                                )
+                            }
+                        }
+
+                        val filteredEvents = events.filter {
+                            when (eventFilter) {
+                                "CRITICAL" -> it.typ == "austreibung" || it.typ == "eskalation" || it.typ == "kalbeverdacht" || it.typ == "brunstverdacht"
+                                else -> true
+                            }
+                        }
+
+                        if (filteredEvents.isEmpty()) {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F5F9)),
+                                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                shape = RoundedCornerShape(20.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(28.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Verified,
+                                            contentDescription = "No events",
+                                            tint = Color(0xFF64748B),
+                                            modifier = Modifier.size(32.dp)
+                                        )
+                                        Text(
+                                            "Alles ruhig im Rinderstall",
+                                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                                            color = Color(0xFF475569)
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            filteredEvents.forEach { event ->
+                                EventLogItem(
+                                    event = event,
+                                    onResolve = { viewModel.markEventResolved(event.id) }
+                                )
+                            }
+                        }
+                    }
+
+                    // RIGHT COLUMN (Stats, System Status, Sensors, Telemetry, and Simulation controls)
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(18.dp)
+                    ) {
+                        BentoAlertCard(
+                            viewModel = viewModel,
+                            activeWarning = activeWarning,
+                            onResolve = { activeWarning?.let { viewModel.markEventResolved(it.id) } }
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            BentoStatsCard(
+                                births = totalBirthsToday,
+                                heats = totalHeatsToday,
+                                filterState = eventFilter,
+                                onToggleFilter = {
+                                    eventFilter = if (eventFilter == "CRITICAL") "ALL" else "CRITICAL"
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                BentoModeToggleCard(
+                                    isActive = globalWatchMode,
+                                    onToggle = { viewModel.toggleWachModusGlobal(!globalWatchMode) }
+                                )
+
+                                BentoEdgeNodeCard(
+                                    host = edgeHost,
+                                    status = edgeStatus
+                                )
+                            }
+                        }
+
+                        BentoRealTimeSensorAlertsCard(
+                            viewModel = viewModel,
+                            bertaCow = bertaCow,
+                            zeldaCow = zeldaCow
+                        )
+
+                        BentoEstrusActivityChartCard()
+
+                        BentoSystemStatusCard(
+                            host = edgeHost,
+                            status = edgeStatus
+                        )
+
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            shape = RoundedCornerShape(28.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(18.dp)) {
+                                Text(
+                                    text = "Stallblick Edge-Simulation",
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = Color(0xFF0F172A)
+                                )
+                                Text(
+                                    text = "Simuliere Ingest-Ereignisse des lokalen Stall-PCs, um das Dashboard live zu testen.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFF64748B)
+                                )
+
+                                Spacer(modifier = Modifier.height(14.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            viewModel.simulateIncomingEdgeAlarm(
+                                                cowId = "Kuh #42",
+                                                type = "kalbeverdacht",
+                                                camera = "stallwache",
+                                                message = "Kuh #42 (Berta): Schwanzwinkel > 45° (aktuell 51.2°) in 24 % der Frames über 30 min.",
+                                                confidence = 0.85
+                                            )
+                                        },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(38.dp)
+                                            .testTag("simulate_calving_btn"),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF005AC1)),
+                                        contentPadding = PaddingValues(0.dp),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Text("Berta Wehen", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+
+                                    Button(
+                                        onClick = {
+                                            viewModel.simulateIncomingEdgeAlarm(
+                                                cowId = "Kuh #42",
+                                                type = "austreibung",
+                                                camera = "stallwache",
+                                                message = "SOFORT-ALARM: Fruchtblase (amniotic_sac) mit Konfidenz 0.92 auf stallwache erkannt!",
+                                                confidence = 0.92
+                                            )
+                                        },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(38.dp)
+                                            .testTag("simulate_birth_btn"),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFBA1A1A)),
+                                        contentPadding = PaddingValues(0.dp),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Text("Berta Geburt", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+
+                                    Button(
+                                        onClick = {
+                                            viewModel.simulateIncomingEdgeAlarm(
+                                                cowId = "Kuh #103",
+                                                type = "brunstverdacht",
+                                                camera = "futterwache",
+                                                message = "Aufsprung (Kuh #103 Zelda auf Kuh #18 Alma) seit 4,8s stabil erkannt (IoU 0.21).",
+                                                confidence = 0.94
+                                            )
+                                        },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(38.dp)
+                                            .testTag("simulate_heat_btn"),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF006495)),
+                                        contentPadding = PaddingValues(0.dp),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Text("Zelda Brunst", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xFFFDFBFF))
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
         // --- Header Block with Ingest Toast ---
         item {
             AnimatedVisibility(
@@ -254,6 +645,14 @@ fun DashboardScreen(
                 viewModel = viewModel,
                 bertaCow = bertaCow,
                 zeldaCow = zeldaCow
+            )
+        }
+
+        // --- BENTO GRID: SYSTEMSTATUS & HARDWARE CONNECTIONS ---
+        item {
+            BentoSystemStatusCard(
+                host = edgeHost,
+                status = edgeStatus
             )
         }
 
@@ -441,6 +840,99 @@ fun DashboardScreen(
             Spacer(modifier = Modifier.height(32.dp))
         }
     }
+}
+
+    // FLOATING PULSING TOAST NOTIFICATION
+    AnimatedVisibility(
+        visible = activeToastEvent != null,
+        enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+        exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+        modifier = Modifier
+            .align(Alignment.TopCenter)
+            .padding(16.dp)
+    ) {
+        val event = activeToastEvent
+        if (event != null) {
+            val isCritical = event.typ == "austreibung" || event.typ == "eskalation" || event.typ == "kalbeverdacht"
+            val alertColor = if (isCritical) Color(0xFFBA1A1A) else Color(0xFF006874)
+            val alertBg = if (isCritical) Color(0xFFFFDAD6) else Color(0xFFE0F7FA)
+            val alertOnBg = if (isCritical) Color(0xFF410002) else Color(0xFF001F24)
+            
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer(scaleX = 1f, scaleY = 1f)
+                    .border(
+                        BorderStroke(
+                            (2.dp * toastPulseAlpha), 
+                            alertColor.copy(alpha = toastPulseAlpha)
+                        ), 
+                        RoundedCornerShape(20.dp)
+                    ),
+                colors = CardDefaults.cardColors(containerColor = alertBg),
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+                shape = RoundedCornerShape(20.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(alertColor.copy(alpha = 0.2f * toastPulseAlpha))
+                            .padding(8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (isCritical) Icons.Default.Warning else Icons.Default.NotificationsActive,
+                            contentDescription = "Alarm",
+                            tint = alertColor,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "NEUES EREIGNIS EMPFANGEN",
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = alertColor,
+                            letterSpacing = 1.sp
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = event.nachricht,
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                            color = alertOnBg
+                        )
+                        Text(
+                            text = "Kamera: ${event.kamera} • Kuh-ID: ${event.kuhId ?: "System"}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = alertOnBg.copy(alpha = 0.7f)
+                        )
+                    }
+                    
+                    IconButton(
+                        onClick = { activeToastEvent = null },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Schließen",
+                            tint = alertColor,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
 }
 
 // --- BENTO COMPOSABLE: MAIN ALERT CARD ---
@@ -1863,10 +2355,17 @@ fun BarnLiveStreamFeedContainer(
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
-    var selectedStall by remember { mutableStateOf(1) } // 1: Stall 1 (Abkalbebereich), 2: Stall 2 (Futterplatz), 3: Stall 3 (Ruhebereich), 4: Stall 4 (Melkstand)
+    var selectedStall by remember { mutableStateOf(1) } // 1: stallwache (Abkalbebereich), 2: futterwache (Futtertisch)
     var isTransitioning by remember { mutableStateOf(false) }
     var isReloading by remember { mutableStateOf(false) }
     var isIrMode by remember { mutableStateOf(false) }
+    var zoomScale by remember { mutableStateOf(1.0f) }
+    var brightnessLevel by remember { mutableStateOf(0f) } // from -3f to +3f, default 0f
+    var contrastBoost by remember { mutableStateOf(false) } // High Contrast / details booster
+
+    val analyzerLoading by viewModel.analyzerLoading.collectAsState()
+    val analyzerThinking by viewModel.analyzerThinking.collectAsState()
+    val analyzerResult by viewModel.analyzerResult.collectAsState()
 
     LaunchedEffect(selectedStall) {
         isTransitioning = true
@@ -1894,16 +2393,6 @@ fun BarnLiveStreamFeedContainer(
         label = "livePulse"
     )
 
-    val breathingValue by infiniteTransition.animateFloat(
-        initialValue = 0.94f,
-        targetValue = 1.06f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "breathing"
-    )
-
     Card(
         modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -1928,7 +2417,7 @@ fun BarnLiveStreamFeedContainer(
                         modifier = Modifier.size(20.dp)
                     )
                     Text(
-                        text = "Barn Live Cam & Stall-Wahl",
+                        text = "Live-Kamera Überwachung",
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                         color = Color(0xFF1A1C1E)
                     )
@@ -1956,41 +2445,25 @@ fun BarnLiveStreamFeedContainer(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Stall Selector Tabs
+            // Stall Selector Tabs (stallwache vs futterwache)
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 StallTabButton(
                     id = 1,
-                    label = "Box 1: Abkalbe",
-                    icon = Icons.Default.Home,
+                    label = "Kamera: stallwache",
+                    icon = Icons.Default.Videocam,
                     isSelected = selectedStall == 1,
                     onClick = { selectedStall = 1 },
                     modifier = Modifier.weight(1f)
                 )
                 StallTabButton(
                     id = 2,
-                    label = "Box 2: Futter",
-                    icon = Icons.Default.Pets,
+                    label = "Kamera: futterwache",
+                    icon = Icons.Default.Videocam,
                     isSelected = selectedStall == 2,
                     onClick = { selectedStall = 2 },
-                    modifier = Modifier.weight(1f)
-                )
-                StallTabButton(
-                    id = 3,
-                    label = "Box 3: Ruhe",
-                    icon = Icons.Default.Favorite,
-                    isSelected = selectedStall == 3,
-                    onClick = { selectedStall = 3 },
-                    modifier = Modifier.weight(1f)
-                )
-                StallTabButton(
-                    id = 4,
-                    label = "Box 4: Melken",
-                    icon = Icons.Default.FlashOn,
-                    isSelected = selectedStall == 4,
-                    onClick = { selectedStall = 4 },
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -2014,83 +2487,112 @@ fun BarnLiveStreamFeedContainer(
                     val width = size.width
                     val height = size.height
 
-                    when (selectedStall) {
-                        1 -> {
-                            // Stall 1: Calving Skeletal Cow (Berta)
-                            drawCowSkeletalPose(
-                                width = width,
-                                height = height,
-                                isTailRaised = (bertaCow?.lastAngle ?: 15f) > 40f,
-                                status = bertaCow?.status ?: "Normal",
-                                isIrMode = isIrMode
-                            )
-                        }
-                        2 -> {
-                            // Stall 2: Mounting Overlapping Behavior (Zelda)
-                            drawMountingBehaviorPose(
-                                width = width,
-                                height = height,
-                                isMounting = zeldaCow?.status == "Brunstverdacht",
-                                isIrMode = isIrMode
-                            )
-                        }
-                        3 -> {
-                            // Stall 3: Sleeping Cow (Alma) with breathing animation
-                            val groundColor = if (isIrMode) Color(0xFF757575) else Color(0xFF8D6E63)
-                            val bodyColor = if (isIrMode) Color(0xFFE0E0E0) else Color(0xFFA1887F)
-                            val keypointColor = if (isIrMode) Color.White else Color.Yellow
+                    // 1. Draw Simulated Barn Scene / Keypoints with digital Zoom
+                    scale(scale = zoomScale, pivot = Offset(width / 2f, height / 2f)) {
+                        when (selectedStall) {
+                            1 -> {
+                                // Stall 1: Calving Skeletal Cow (Berta)
+                                drawCowSkeletalPose(
+                                    width = width,
+                                    height = height,
+                                    isTailRaised = (bertaCow?.lastAngle ?: 15f) > 40f,
+                                    status = bertaCow?.status ?: "Normal",
+                                    isIrMode = isIrMode
+                                )
 
-                            drawLine(groundColor, Offset(0f, height * 0.82f), Offset(width, height * 0.82f), strokeWidth = 3f)
+                                // Draw High Contrast / AI tracking bounding box if contrastBoost is active
+                                if (contrastBoost) {
+                                    val boxColor = if (isIrMode) Color.White else Color(0xFFBA1A1A)
+                                    val cx = width * 0.45f
+                                    val cy = height * 0.52f
+                                    
+                                    // Bounding Box
+                                    drawRect(
+                                        color = boxColor,
+                                        topLeft = Offset(cx - 70f, cy - 50f),
+                                        size = Size(140f, 100f),
+                                        style = Stroke(width = 2f)
+                                    )
+                                }
+                            }
+                            2 -> {
+                                // Stall 2: Mounting Overlapping Behavior (Zelda)
+                                drawMountingBehaviorPose(
+                                    width = width,
+                                    height = height,
+                                    isMounting = zeldaCow?.status == "Brunstverdacht",
+                                    isIrMode = isIrMode
+                                )
 
-                            val cx = width * 0.48f
-                            val cy = height * 0.58f
-
-                            // Draw resting body oval utilizing the Breathing Infinite Transition!
-                            drawOval(
-                                color = bodyColor.copy(alpha = if (isIrMode) 0.35f else 0.2f),
-                                topLeft = Offset(cx - 70f * breathingValue, cy - 35f * breathingValue),
-                                size = Size(140f * breathingValue, 70f * breathingValue)
-                            )
-
-                            // Head of the sleeping cow
-                            drawCircle(
-                                color = bodyColor.copy(alpha = if (isIrMode) 0.45f else 0.3f),
-                                radius = 22f,
-                                center = Offset(cx - 75f, cy + 10f)
-                            )
-
-                            // Sleeping keypoints (eye, shoulder, rump)
-                            drawCircle(keypointColor, 5f, Offset(cx - 80f, cy + 12f)) // Eye (closed)
-                            drawCircle(keypointColor, 6f, Offset(cx - 20f, cy - 10f)) // Spine/Shoulder
-                            drawCircle(keypointColor, 6f, Offset(cx + 40f, cy + 10f)) // Hip/Rump
-                        }
-                        4 -> {
-                            // Stall 4: Milking frame cow (Mona)
-                            val groundColor = if (isIrMode) Color(0xFF757575) else Color(0xFF8D6E63)
-                            val bodyColor = if (isIrMode) Color(0xFFE0E0E0) else Color(0xFFA1887F)
-                            val frameColor = if (isIrMode) Color(0xFF9E9E9E) else Color(0xFF74777F)
-
-                            drawLine(groundColor, Offset(0f, height * 0.82f), Offset(width, height * 0.82f), strokeWidth = 3f)
-
-                            val cx = width * 0.45f
-                            val cy = height * 0.48f
-
-                            // Cow standing in Milking Partition Frame
-                            drawRect(bodyColor.copy(alpha = if (isIrMode) 0.3f else 0.15f), Offset(cx - 50f, cy - 30f), Size(100f, 60f))
-
-                            // Milking metal frame partitions
-                            drawLine(frameColor, Offset(cx - 65f, cy - 40f), Offset(cx - 65f, cy + 50f), strokeWidth = 4f)
-                            drawLine(frameColor, Offset(cx + 65f, cy - 40f), Offset(cx + 65f, cy + 50f), strokeWidth = 4f)
-                            drawLine(frameColor, Offset(cx - 65f, cy - 40f), Offset(cx + 65f, cy - 40f), strokeWidth = 4f)
-
-                            // Four teat cups pulsing
-                            val pulseGreen = if (livePulseAlpha > 0.5f) Color(0xFF2E7D32) else Color(0xFF81C784)
-                            drawCircle(pulseGreen, 5f, Offset(cx - 10f, cy + 40f))
-                            drawCircle(pulseGreen, 5f, Offset(cx - 2f, cy + 40f))
-                            drawCircle(pulseGreen, 5f, Offset(cx + 6f, cy + 40f))
-                            drawCircle(pulseGreen, 5f, Offset(cx + 14f, cy + 40f))
+                                // Draw High Contrast / AI tracking bounding box if contrastBoost is active
+                                if (contrastBoost) {
+                                    val boxColor = if (isIrMode) Color.White else Color(0xFF006495)
+                                    val cx = width * 0.45f
+                                    val cy = height * 0.52f
+                                    
+                                    // Bounding Box for mounting behavior
+                                    drawRect(
+                                        color = boxColor,
+                                        topLeft = Offset(cx - 100f, cy - 60f),
+                                        size = Size(200f, 120f),
+                                        style = Stroke(width = 2f)
+                                    )
+                                }
+                            }
                         }
                     }
+
+                    // Apply Brightness / Exposure overlay
+                    if (brightnessLevel > 0f) {
+                        drawRect(
+                            color = Color.White.copy(alpha = (brightnessLevel * 0.12f).coerceAtMost(0.6f)),
+                            size = size
+                        )
+                    } else if (brightnessLevel < 0f) {
+                        drawRect(
+                            color = Color.Black.copy(alpha = (-brightnessLevel * 0.12f).coerceAtMost(0.8f)),
+                            size = size
+                        )
+                    }
+
+                    // 2. Simulated Camera HUD Grid Overlay
+                    val gridColor = Color.White.copy(alpha = 0.08f)
+                    val strokeW = 1f
+                    
+                    // Vertical grid lines
+                    drawLine(gridColor, Offset(width * 0.25f, 0f), Offset(width * 0.25f, height), strokeWidth = strokeW)
+                    drawLine(gridColor, Offset(width * 0.5f, 0f), Offset(width * 0.5f, height), strokeWidth = strokeW)
+                    drawLine(gridColor, Offset(width * 0.75f, 0f), Offset(width * 0.75f, height), strokeWidth = strokeW)
+                    
+                    // Horizontal grid lines
+                    drawLine(gridColor, Offset(0f, height * 0.25f), Offset(width, height * 0.25f), strokeWidth = strokeW)
+                    drawLine(gridColor, Offset(0f, height * 0.5f), Offset(width, height * 0.5f), strokeWidth = strokeW)
+                    drawLine(gridColor, Offset(0f, height * 0.75f), Offset(width, height * 0.75f), strokeWidth = strokeW)
+                    
+                    // Corner Crop Marks (Safe Area brackets)
+                    val bracketColor = Color.White.copy(alpha = 0.2f)
+                    val bSize = 15f
+                    val bThick = 2f
+                    // Top-Left bracket
+                    drawLine(bracketColor, Offset(15f, 15f), Offset(15f + bSize, 15f), strokeWidth = bThick)
+                    drawLine(bracketColor, Offset(15f, 15f), Offset(15f, 15f + bSize), strokeWidth = bThick)
+                    // Top-Right bracket
+                    drawLine(bracketColor, Offset(width - 15f, 15f), Offset(width - 15f - bSize, 15f), strokeWidth = bThick)
+                    drawLine(bracketColor, Offset(width - 15f, 15f), Offset(width - 15f, 15f + bSize), strokeWidth = bThick)
+                    // Bottom-Left bracket
+                    drawLine(bracketColor, Offset(15f, height - 15f), Offset(15f + bSize, height - 15f), strokeWidth = bThick)
+                    drawLine(bracketColor, Offset(15f, height - 15f), Offset(15f, height - 15f - bSize), strokeWidth = bThick)
+                    // Bottom-Right bracket
+                    drawLine(bracketColor, Offset(width - 15f, height - 15f), Offset(width - 15f - bSize, height - 15f), strokeWidth = bThick)
+                    drawLine(bracketColor, Offset(width - 15f, height - 15f), Offset(width - 15f, height - 15f - bSize), strokeWidth = bThick)
+
+                    // Pulsing Red REC indicator
+                    val recAlpha = livePulseAlpha
+                    drawCircle(
+                        color = Color.Red.copy(alpha = recAlpha),
+                        radius = 6f,
+                        center = Offset(30f, 30f)
+                    )
                 }
 
                 // Timecode Overlay top right
@@ -2119,10 +2621,8 @@ fun BarnLiveStreamFeedContainer(
                 ) {
                     Text(
                         text = when (selectedStall) {
-                            1 -> "Box 1: Abkalbebereich"
-                            2 -> "Box 2: Futtertisch"
-                            3 -> "Box 3: Ruhebereich"
-                            else -> "Box 4: Melkstand"
+                            1 -> "Kamera: stallwache"
+                            else -> "Kamera: futterwache"
                         },
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
@@ -2130,10 +2630,8 @@ fun BarnLiveStreamFeedContainer(
                     )
                     Text(
                         text = when (selectedStall) {
-                            1 -> bertaCow?.let { "Kuh #42 (Berta) • Winkel: ${String.format(Locale.US, "%.1f", it.lastAngle)}°" } ?: "Keine Kuh im Fokus"
-                            2 -> zeldaCow?.let { "Kuh #103 (Zelda) • Unruhig" } ?: "Keine Aktivität"
-                            3 -> "Kuh #18 (Alma) • Ruht"
-                            else -> "Kuh #88 (Mona) • Melkprozess aktiv"
+                            1 -> bertaCow?.let { "Kuh #42 (Berta) • Schwanzwinkel: ${String.format(Locale.US, "%.1f", it.lastAngle)}°" } ?: "Keine Kuh im Fokus"
+                            else -> zeldaCow?.let { "Kuh #103 (Zelda) • Aktivität erhöht" } ?: "Normales Verhalten"
                         },
                         color = Color.LightGray,
                         fontSize = 8.sp
@@ -2255,6 +2753,321 @@ fun BarnLiveStreamFeedContainer(
                     }
                 }
             }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // CAMERA SETTINGS & FILTERS CARD
+            Card(
+                modifier = Modifier.fillMaxWidth().testTag("camera_controls_card"),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = null,
+                                tint = Color(0xFF475569),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "Kamera-Einstellungen",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                color = Color(0xFF334155)
+                            )
+                        }
+                        
+                        // Reset to defaults
+                        Text(
+                            text = "Zurücksetzen",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF005AC1),
+                            modifier = Modifier
+                                .clickable {
+                                    zoomScale = 1.0f
+                                    brightnessLevel = 0f
+                                    contrastBoost = false
+                                }
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                .testTag("camera_reset_btn")
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.height(10.dp))
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        // ZOOM SEGMENTED CONTROL
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(Icons.Default.ZoomIn, contentDescription = null, tint = Color(0xFF475569), modifier = Modifier.size(12.dp))
+                                Text("Zoom: ${String.format(Locale.US, "%.1fx", zoomScale)}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                listOf(1.0f, 1.5f, 2.0f, 3.0f).forEach { zoom ->
+                                    val isSel = zoomScale == zoom
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(if (isSel) Color(0xFF005AC1) else Color.White)
+                                            .border(1.dp, if (isSel) Color(0xFF005AC1) else Color(0xFFCBD5E1), RoundedCornerShape(8.dp))
+                                            .clickable { zoomScale = zoom }
+                                            .padding(vertical = 6.dp)
+                                            .testTag("zoom_btn_${zoom.toInt()}"),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "${zoom.toInt()}x",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isSel) Color.White else Color(0xFF475569)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // BRIGHTNESS SEGMENTED CONTROL
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(Icons.Default.LightMode, contentDescription = null, tint = Color(0xFF475569), modifier = Modifier.size(12.dp))
+                                Text("Helligkeit: ${if (brightnessLevel > 0) "+" else ""}${brightnessLevel.toInt()}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                IconButton(
+                                    onClick = { if (brightnessLevel > -3f) brightnessLevel -= 1f },
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color.White)
+                                        .border(1.dp, Color(0xFFCBD5E1), RoundedCornerShape(8.dp))
+                                        .testTag("brightness_minus_btn")
+                                ) {
+                                    Icon(Icons.Default.Remove, contentDescription = "Dunkler", tint = Color(0xFF475569), modifier = Modifier.size(12.dp))
+                                }
+                                
+                                // Indicator dots
+                                Row(
+                                    modifier = Modifier.weight(1f),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    for (i in -3..3) {
+                                        val active = i == brightnessLevel.toInt()
+                                        Box(
+                                            modifier = Modifier
+                                                .padding(horizontal = 1.dp)
+                                                .size(if (i == 0) 5.dp else 3.dp)
+                                                .clip(CircleShape)
+                                                .background(
+                                                    if (active) Color(0xFF005AC1)
+                                                    else if (i == 0) Color(0xFF94A3B8)
+                                                    else Color(0xFFE2E8F0)
+                                                )
+                                        )
+                                    }
+                                }
+                                
+                                IconButton(
+                                    onClick = { if (brightnessLevel < 3f) brightnessLevel += 1f },
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color.White)
+                                        .border(1.dp, Color(0xFFCBD5E1), RoundedCornerShape(8.dp))
+                                        .testTag("brightness_plus_btn")
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = "Heller", tint = Color(0xFF475569), modifier = Modifier.size(12.dp))
+                                }
+                            }
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(10.dp))
+                    
+                    // CONTRAST/DETAILS ENHANCER (AI Tracking & Bounding Box)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (contrastBoost) Color(0xFFD8E2FF) else Color.White)
+                            .border(1.dp, if (contrastBoost) Color(0xFF94A3B8) else Color(0xFFE2E8F0), RoundedCornerShape(10.dp))
+                            .clickable { contrastBoost = !contrastBoost }
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                            .testTag("contrast_boost_row"),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.FilterCenterFocus,
+                                contentDescription = null,
+                                tint = if (contrastBoost) Color(0xFF005AC1) else Color(0xFF475569),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Column {
+                                Text(
+                                    text = "AI-Wache Objektverfolgung",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (contrastBoost) Color(0xFF001D3E) else Color(0xFF334155)
+                                )
+                                Text(
+                                    text = "Zeigt Echtzeit-YOLOv8-Objektboxen der Rinder.",
+                                    fontSize = 9.sp,
+                                    color = if (contrastBoost) Color(0xFF001D3E).copy(alpha = 0.7f) else Color(0xFF64748B)
+                                )
+                            }
+                        }
+                        
+                        Switch(
+                            checked = contrastBoost,
+                            onCheckedChange = { contrastBoost = it },
+                            modifier = Modifier.scale(0.7f).height(24.dp).testTag("contrast_boost_switch")
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // AI Analyze button
+            Button(
+                onClick = {
+                    if (selectedStall == 1) {
+                        viewModel.analyzeCameraFrame(
+                            "stallwache",
+                            "Live-Stream Kamera Stallwache: Abkalbebereich. Eine schwarzbunte Holsteinkuh (Berta) wird beobachtet. Ihr Schwanzwinkel liegt aktuell bei 49.5° (erhöht), was auf Wehentätigkeit hindeutet.",
+                            null
+                        )
+                    } else {
+                        viewModel.analyzeCameraFrame(
+                            "futterwache",
+                            "Live-Stream Kamera Futterwache: Futtertisch & Laufgang. Zwei Kühe überlappen sich (Kuh #103 Zelda zeigt Aufsprungverhalten auf eine andere Kuh), was auf Brunstverhalten hindeutet.",
+                            null
+                        )
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("stream_analyze_btn"),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFE8F0FE),
+                    contentColor = Color(0xFF005AC1)
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Text("Kamerabild analysieren (KI-Wache)", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                }
+            }
+
+            // AI Diagnostics Results section
+            if (analyzerLoading) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF0F4F8)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Text(
+                            text = analyzerThinking,
+                            fontSize = 11.sp,
+                            color = Color.DarkGray
+                        )
+                    }
+                }
+            }
+
+            if (analyzerResult != null) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp)
+                        .testTag("ai_diagnostic_result_card"),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF0FBF0)),
+                    border = BorderStroke(1.dp, Color(0xFFC2E0C2)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.size(14.dp))
+                                Text(
+                                    text = "Veterinär-Bericht (KI-Analyse)",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF2E7D32)
+                                )
+                            }
+                            
+                            // Clear button
+                            IconButton(
+                                onClick = { viewModel.clearAnalyzerResult() },
+                                modifier = Modifier.size(20.dp)
+                            ) {
+                                Icon(Icons.Default.Close, contentDescription = "Schließen", tint = Color.Gray, modifier = Modifier.size(12.dp))
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = analyzerResult ?: "",
+                            fontSize = 11.sp,
+                            color = Color.DarkGray
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -2319,6 +3132,264 @@ fun LegendItem(color: Color, label: String) {
             fontWeight = FontWeight.Bold,
             color = Color(0xFF44474E)
         )
+    }
+}
+
+@Composable
+fun BentoSystemStatusCard(
+    host: String,
+    status: String,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = BorderStroke(1.dp, Color(0xFFC5C6D0)),
+        shape = RoundedCornerShape(28.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFFE8F0FE))
+                            .padding(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Dns,
+                            contentDescription = "System Status",
+                            tint = Color(0xFF005AC1),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = "Hardware & KI-Wache Systemstatus",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = Color(0xFF1A1C1E)
+                        )
+                        Text(
+                            text = "Uptime: 14 Tage, 6 Std. • Host: $host",
+                            fontSize = 10.sp,
+                            color = Color.Gray
+                        )
+                    }
+                }
+
+                // Status Badge
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(
+                            if (status == "AKTIV") Color(0xFFE8F5E9) else Color(0xFFFFF3E0)
+                        )
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = status,
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = if (status == "AKTIV") Color(0xFF2E7D32) else Color(0xFFE65100)
+                    )
+                }
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+            // Three Column Layout
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Column 1: Hardware-Gesundheit (Monitoring Health)
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "MONITORING GESUNDHEIT",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF5F6368),
+                        letterSpacing = 0.5.sp
+                    )
+
+                    // CPU Metric
+                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Icon(Icons.Default.Speed, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(12.dp))
+                                Text("CPU-Auslastung", fontSize = 10.sp, color = Color(0xFF44474E))
+                            }
+                            Text("18%", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF005AC1))
+                        }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFE1E2EC))
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .fillMaxWidth(0.18f)
+                                    .background(Color(0xFF005AC1))
+                            )
+                        }
+                    }
+
+                    // RAM Metric
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Icon(Icons.Default.Memory, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(12.dp))
+                            Text("Arbeitsspeicher", fontSize = 10.sp, color = Color(0xFF44474E))
+                        }
+                        Text("4.2 GB / 8 GB", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF005AC1))
+                    }
+
+                    // Core Temp Metric
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Icon(Icons.Default.Thermostat, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(12.dp))
+                            Text("Kerntemperatur", fontSize = 10.sp, color = Color(0xFF44474E))
+                        }
+                        Text("44°C", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
+                    }
+                }
+
+                // Column 2: Active Camera Streams
+                Column(
+                    modifier = Modifier.weight(1.5f),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "AKTIVE STALL-STREAMS",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF5F6368),
+                        letterSpacing = 0.5.sp
+                    )
+
+                    // Stream 1
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Icon(Icons.Default.Videocam, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.size(12.dp))
+                            Text("stallwache", fontSize = 10.sp, fontWeight = FontWeight.Medium, color = Color(0xFF1A1C1E))
+                        }
+                        Text("RTSP Restream (1.2 FPS)", fontSize = 9.sp, color = Color.Gray)
+                    }
+
+                    // Stream 2
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Icon(Icons.Default.Videocam, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.size(12.dp))
+                            Text("futterwache", fontSize = 10.sp, fontWeight = FontWeight.Medium, color = Color(0xFF1A1C1E))
+                        }
+                        Text("HLS Restream (1.0 FPS)", fontSize = 9.sp, color = Color.Gray)
+                    }
+
+                    // AI Pipeline Status
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.size(12.dp))
+                            Text("YOLOv8-Pose Pipeline", fontSize = 10.sp, color = Color(0xFF1A1C1E))
+                        }
+                        Text("Online", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
+                    }
+                }
+
+                // Column 3: Connectivity Status
+                Column(
+                    modifier = Modifier.weight(1.2f),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "KONNEKTIVITÄT & KANÄLE",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF5F6368),
+                        letterSpacing = 0.5.sp
+                    )
+
+                    // Hof-LAN
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Icon(Icons.Default.Wifi, contentDescription = null, tint = Color(0xFF005AC1), modifier = Modifier.size(12.dp))
+                            Text("Hof-LAN", fontSize = 10.sp, color = Color(0xFF44474E))
+                        }
+                        Text("1 Gbps (OK)", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
+                    }
+
+                    // MQTT Broker
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Icon(Icons.Default.Settings, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(12.dp))
+                            Text("MQTT Broker", fontSize = 10.sp, color = Color(0xFF44474E))
+                        }
+                        Text("Verbunden", fontSize = 9.sp, color = Color(0xFF2E7D32))
+                    }
+
+                    // Telegram API
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Icon(Icons.Default.Send, contentDescription = null, tint = Color(0xFF005AC1), modifier = Modifier.size(12.dp))
+                            Text("Telegram API", fontSize = 10.sp, color = Color(0xFF44474E))
+                        }
+                        Text("Bereit", fontSize = 9.sp, color = Color(0xFF2E7D32))
+                    }
+                }
+            }
+        }
     }
 }
 

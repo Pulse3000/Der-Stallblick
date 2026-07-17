@@ -9,8 +9,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -41,6 +43,8 @@ fun HerdScreen(
 
     var searchQuery by remember { mutableStateOf("") }
     var showAddDialog by remember { mutableStateOf(false) }
+    var showEditDialog by remember { mutableStateOf(false) }
+    var editingCow by remember { mutableStateOf<Cow?>(null) }
 
     // --- New Cow Form States ---
     var newId by remember { mutableStateOf("") }
@@ -48,11 +52,23 @@ fun HerdScreen(
     var newDueDate by remember { mutableStateOf("") }
     var newStatus by remember { mutableStateOf("Normal") }
     var newWatchMode by remember { mutableStateOf(false) }
+    var newEarTagId by remember { mutableStateOf("") }
+    var newPhysicalDescription by remember { mutableStateOf("") }
+
+    // --- Edit Cow Form States ---
+    var editId by remember { mutableStateOf("") }
+    var editName by remember { mutableStateOf("") }
+    var editDueDate by remember { mutableStateOf("") }
+    var editStatus by remember { mutableStateOf("Normal") }
+    var editWatchMode by remember { mutableStateOf(false) }
+    var editEarTagId by remember { mutableStateOf("") }
+    var editPhysicalDescription by remember { mutableStateOf("") }
 
     val filteredCows = remember(cows, searchQuery) {
         cows.filter {
             it.id.contains(searchQuery, ignoreCase = true) ||
-            it.name.contains(searchQuery, ignoreCase = true)
+            it.name.contains(searchQuery, ignoreCase = true) ||
+            it.earTagId.contains(searchQuery, ignoreCase = true)
         }
     }
 
@@ -67,6 +83,8 @@ fun HerdScreen(
                     newDueDate = SimpleDateFormat("yyyy-MM-dd", Locale.GERMANY).format(Date())
                     newStatus = "Normal"
                     newWatchMode = false
+                    newEarTagId = "DE 08 152 " + (10000 + Random().nextInt(90000)).toString()
+                    newPhysicalDescription = ""
                     showAddDialog = true
                 },
                 modifier = Modifier.testTag("add_cow_fab"),
@@ -154,6 +172,17 @@ fun HerdScreen(
                             onWatchModeToggle = { active ->
                                 viewModel.updateCow(cow.copy(watchMode = active))
                             },
+                            onEdit = {
+                                editingCow = cow
+                                editId = cow.id
+                                editName = cow.name
+                                editDueDate = cow.calvingDueDate
+                                editStatus = cow.status
+                                editWatchMode = cow.watchMode
+                                editEarTagId = cow.earTagId
+                                editPhysicalDescription = cow.physicalDescription
+                                showEditDialog = true
+                            },
                             onDelete = {
                                 viewModel.deleteCow(cow)
                             }
@@ -172,7 +201,9 @@ fun HerdScreen(
             text = {
                 Column(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
                 ) {
                     OutlinedTextField(
                         value = newId,
@@ -188,6 +219,22 @@ fun HerdScreen(
                         label = { Text("Name (z.B. Berta)") },
                         modifier = Modifier.fillMaxWidth().testTag("new_cow_name_input"),
                         singleLine = true
+                    )
+
+                    OutlinedTextField(
+                        value = newEarTagId,
+                        onValueChange = { newEarTagId = it },
+                        label = { Text("Ohrmarke (z.B. DE 08 152 42931)") },
+                        modifier = Modifier.fillMaxWidth().testTag("new_cow_eartag_input"),
+                        singleLine = true
+                    )
+
+                    OutlinedTextField(
+                        value = newPhysicalDescription,
+                        onValueChange = { newPhysicalDescription = it },
+                        label = { Text("Körperliche Merkmale / Beschreibung") },
+                        modifier = Modifier.fillMaxWidth().testTag("new_cow_desc_input"),
+                        minLines = 2
                     )
 
                     // Simple Date Picker Dialog trigger
@@ -233,7 +280,7 @@ fun HerdScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        listOf("Normal", "Kalbeverdacht", "Trächtig").forEach { status ->
+                        listOf("Normal", "Kalbeverdacht", "Trächtig", "Brunstverdacht").forEach { status ->
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(6.dp))
@@ -282,7 +329,9 @@ fun HerdScreen(
                                     name = newName.ifEmpty { "Kuh " + newId.substringAfter("#") },
                                     status = newStatus,
                                     calvingDueDate = newDueDate,
-                                    watchMode = newWatchMode
+                                    watchMode = newWatchMode,
+                                    earTagId = newEarTagId,
+                                    physicalDescription = newPhysicalDescription
                                 )
                             )
                             showAddDialog = false
@@ -300,12 +349,167 @@ fun HerdScreen(
             }
         )
     }
+
+    // --- Edit Cow Dialog ---
+    if (showEditDialog && editingCow != null) {
+        AlertDialog(
+            onDismissRequest = { showEditDialog = false },
+            title = { Text("Kuh-Profil bearbeiten") },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    Text(
+                        text = "Kuh-ID: $editId",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+
+                    OutlinedTextField(
+                        value = editName,
+                        onValueChange = { editName = it },
+                        label = { Text("Name (z.B. Berta)") },
+                        modifier = Modifier.fillMaxWidth().testTag("edit_cow_name_input"),
+                        singleLine = true
+                    )
+
+                    OutlinedTextField(
+                        value = editEarTagId,
+                        onValueChange = { editEarTagId = it },
+                        label = { Text("Ohrmarke (z.B. DE 08 152 42931)") },
+                        modifier = Modifier.fillMaxWidth().testTag("edit_cow_eartag_input"),
+                        singleLine = true
+                    )
+
+                    OutlinedTextField(
+                        value = editPhysicalDescription,
+                        onValueChange = { editPhysicalDescription = it },
+                        label = { Text("Körperliche Merkmale / Beschreibung") },
+                        modifier = Modifier.fillMaxWidth().testTag("edit_cow_desc_input"),
+                        minLines = 2
+                    )
+
+                    // Simple Date Picker Dialog trigger
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                val calendar = Calendar.getInstance()
+                                DatePickerDialog(
+                                    context,
+                                    { _, year, month, dayOfMonth ->
+                                        val cal = Calendar.getInstance()
+                                        cal.set(year, month, dayOfMonth)
+                                        editDueDate = SimpleDateFormat("yyyy-MM-dd", Locale.GERMANY).format(cal.time)
+                                    },
+                                    calendar.get(Calendar.YEAR),
+                                    calendar.get(Calendar.MONTH),
+                                    calendar.get(Calendar.DAY_OF_MONTH)
+                                ).show()
+                            }
+                            .border(1.dp, Color.Gray, RoundedCornerShape(4.dp))
+                            .padding(14.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Abkalbetermin: $editDueDate",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Icon(Icons.Default.CalendarToday, contentDescription = null, modifier = Modifier.size(18.dp))
+                        }
+                    }
+
+                    // Status Dropdown selector simulation
+                    Text(
+                        text = "Status: $editStatus",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf("Normal", "Kalbeverdacht", "Trächtig", "Austreibung", "Brunstverdacht").forEach { status ->
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(
+                                        if (editStatus == status) MaterialTheme.colorScheme.primaryContainer 
+                                        else MaterialTheme.colorScheme.surfaceVariant
+                                    )
+                                    .clickable { editStatus = status }
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = status,
+                                    fontSize = 11.sp,
+                                    color = if (editStatus == status) MaterialTheme.colorScheme.onPrimaryContainer 
+                                            else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    // Watch Mode toggle
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Aktivierender Wach-Modus", style = MaterialTheme.typography.bodyMedium)
+                            Text("Soll die Kuh in der engere Geburtshilfe-Wache geführt werden?", fontSize = 10.sp, color = Color.Gray)
+                        }
+                        Switch(
+                            checked = editWatchMode,
+                            onCheckedChange = { editWatchMode = it },
+                            modifier = Modifier.testTag("edit_cow_watch_switch")
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val cowToUpdate = editingCow
+                        if (cowToUpdate != null) {
+                            viewModel.updateCow(
+                                cowToUpdate.copy(
+                                    name = editName.ifEmpty { "Kuh " + editId.substringAfter("#") },
+                                    status = editStatus,
+                                    calvingDueDate = editDueDate,
+                                    watchMode = editWatchMode,
+                                    earTagId = editEarTagId,
+                                    physicalDescription = editPhysicalDescription
+                                )
+                            )
+                            showEditDialog = false
+                        }
+                    },
+                    modifier = Modifier.testTag("update_cow_btn")
+                ) {
+                    Text("Speichern")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditDialog = false }) {
+                    Text("Abbrechen")
+                }
+            }
+        )
+    }
 }
 
 @Composable
 fun CowListItem(
     cow: Cow,
     onWatchModeToggle: (Boolean) -> Unit,
+    onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
     var confirmDelete by remember { mutableStateOf(false) }
@@ -340,10 +544,27 @@ fun CowListItem(
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(Icons.Default.Pets, contentDescription = null, modifier = Modifier.size(20.dp), tint = statusColor)
                     Column {
-                        Text(
-                            text = cow.id,
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = cow.id,
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                            )
+                            if (cow.earTagId.isNotEmpty()) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(Color(0xFFF1F3F4))
+                                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = cow.earTagId,
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color(0xFF5F6368)
+                                    )
+                                }
+                            }
+                        }
                         Text(
                             text = "Name: ${cow.name}",
                             style = MaterialTheme.typography.bodySmall,
@@ -365,6 +586,30 @@ fun CowListItem(
                         color = statusColor,
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
                     )
+                }
+            }
+
+            if (cow.physicalDescription.isNotEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFFFBFBFB))
+                        .padding(8.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = "Körperliche Merkmale / Beschreibung:",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Gray
+                        )
+                        Text(
+                            text = cow.physicalDescription,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFF44474E)
+                        )
+                    }
                 }
             }
 
@@ -412,10 +657,11 @@ fun CowListItem(
                 }
             }
 
-            // Quick Delete option
+            // Quick Actions: Edit / Delete
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 if (confirmDelete) {
                     Row(
@@ -428,8 +674,22 @@ fun CowListItem(
                     }
                 } else {
                     IconButton(
+                        onClick = onEdit,
+                        modifier = Modifier.size(32.dp).testTag("edit_cow_btn_${cow.id}")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Kuh bearbeiten",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    IconButton(
                         onClick = { confirmDelete = true },
-                        modifier = Modifier.size(24.dp).testTag("delete_cow_btn_${cow.id}")
+                        modifier = Modifier.size(32.dp).testTag("delete_cow_btn_${cow.id}")
                     ) {
                         Icon(
                             imageVector = Icons.Default.Delete,
