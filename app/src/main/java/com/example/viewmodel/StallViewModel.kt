@@ -1,22 +1,33 @@
 package com.example.viewmodel
 
 import android.app.Application
+import android.content.ContentValues
 import android.content.Context
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.util.Base64
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.BuildConfig
 import com.example.api.*
 import com.example.data.*
+import com.example.stream.BridgeType
+import com.example.stream.CameraConfig
+import com.example.stream.StreamQuelle
+import com.example.stream.StreamSettings
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.io.InputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 
 class StallViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -91,6 +102,337 @@ class StallViewModel(application: Application) : AndroidViewModel(application) {
     // --- New Ingested Event Event Flow ---
     private val _newIngestedEvent = MutableSharedFlow<StallEvent>(extraBufferCapacity = 1)
     val newIngestedEvent = _newIngestedEvent.asSharedFlow()
+
+    // ------------------------------------------------------------------
+    // Stallblick Cloud & Kamera-Streams (Port des Die-Stallwache-Repos)
+    // ------------------------------------------------------------------
+
+    /** Client fuer die deployte Stallblick-Webapp (Login, Events, Tuya-Streams). */
+    private val cloudClient = StallblickCloudClient(prefs)
+
+    /** Gemeinsamer HTTP-Client – ExoPlayer nutzt ihn fuer Cookie-geschuetzte Proxy-Streams. */
+    val cloudHttpClient get() = cloudClient.http
+
+    private val _streamSettings = MutableStateFlow(ladeStreamSettings())
+    val streamSettings = _streamSettings.asStateFlow()
+
+    // Direkte Tuya-Cloud-Zugangsdaten (Fallback ohne Webapp; Spiegel der TUYA_*-Env-Vars).
+    private val _tuyaAccessId = MutableStateFlow(prefs.getString("tuya_access_id", "") ?: "")
+    val tuyaAccessId = _tuyaAccessId.asStateFlow()
+
+    private val _tuyaAccessSecret = MutableStateFlow(prefs.getString("tuya_access_secret", "") ?: "")
+    val tuyaAccessSecret = _tuyaAccessSecret.asStateFlow()
+
+    private val _tuyaDeviceIdFutterwache =
+        MutableStateFlow(prefs.getString("tuya_device_id_futterwache", "") ?: "")
+    val tuyaDeviceIdFutterwache = _tuyaDeviceIdFutterwache.asStateFlow()
+
+    private val _tuyaDeviceIdStallbox =
+        MutableStateFlow(prefs.getString("tuya_device_id_stallbox", "") ?: "")
+    val tuyaDeviceIdStallbox = _tuyaDeviceIdStallbox.asStateFlow()
+
+    private val _tuyaApiBase =
+        MutableStateFlow(prefs.getString("tuya_api_base", "https://openapi.tuyaeu.com") ?: "")
+    val tuyaApiBase = _tuyaApiBase.asStateFlow()
+
+    /** Login-Status gegen die Webapp ("angemeldet", "nicht angemeldet", Fehlermeldung). */
+    private val _cloudStatus = MutableStateFlow(
+        if (cloudClient.hatSession()) "Angemeldet (Session gespeichert)" else "Nicht angemeldet"
+    )
+    val cloudStatus = _cloudStatus.asStateFlow()
+
+    /** Quelle der zuletzt synchronisierten Cloud-Ereignisse: edge-agent | demo | null (kein Sync). */
+    private val _cloudQuelle = MutableStateFlow<String?>(null)
+    val cloudQuelle = _cloudQuelle.asStateFlow()
+
+    /** Vollbild-Zustand des Live-Screens (steuert auch die Bottom-Navigation). */
+    private val _liveVollbild = MutableStateFlow(false)
+    val liveVollbild = _liveVollbild.asStateFlow()
+
+    /** Lokale Ereignisliste des Live-Screens (Zeit, Text) – wie in StallblickApp.tsx. */
+    private val _liveEreignisse = MutableStateFlow<List<Pair<String, String>>>(emptyList())
+    val liveEreignisse = _liveEreignisse.asStateFlow()
+
+    private fun ladeStreamSettings(): StreamSettings = StreamSettings(
+        bridgeUrl = prefs.getString("bridge_url", "") ?: "",
+        bridgeType = if ((prefs.getString("bridge_type", "go2rtc") ?: "go2rtc")
+                .trim().lowercase() == "mediamtx"
+        ) BridgeType.MEDIAMTX else BridgeType.GO2RTC,
+        streamNameStallwache = prefs.getString("stream_name_stallwache", "stallwache") ?: "stallwache",
+        streamNameFutterwache = prefs.getString("stream_name_futterwache", "futterwache") ?: "futterwache",
+        streamNameStallbox = prefs.getString("stream_name_stallbox", "stallbox") ?: "stallbox",
+        webappUrl = prefs.getString("webapp_url", StreamSettings.DEFAULT_WEBAPP_URL)
+            ?: StreamSettings.DEFAULT_WEBAPP_URL,
+        futterwacheTuya = prefs.getBoolean("futterwache_tuya", true),
+        stallboxTuya = prefs.getBoolean("stallbox_tuya", true),
+    )
+
+    fun updateStreamSettings(neu: StreamSettings) {
+        _streamSettings.value = neu
+        prefs.edit()
+            .putString("bridge_url", neu.bridgeUrl.trim())
+            .putString("bridge_type", if (neu.bridgeType == BridgeType.MEDIAMTX) "mediamtx" else "go2rtc")
+            .putString("stream_name_stallwache", neu.streamNameStallwache.trim())
+            .putString("stream_name_futterwache", neu.streamNameFutterwache.trim())
+            .putString("stream_name_stallbox", neu.streamNameStallbox.trim())
+            .putString("webapp_url", neu.webappUrl.trim())
+            .putBoolean("futterwache_tuya", neu.futterwacheTuya)
+            .putBoolean("stallbox_tuya", neu.stallboxTuya)
+            .apply()
+    }
+
+    fun updateTuyaSettings(
+        accessId: String,
+        accessSecret: String,
+        deviceIdFutterwache: String,
+        deviceIdStallbox: String,
+        apiBase: String,
+    ) {
+        _tuyaAccessId.value = accessId.trim()
+        _tuyaAccessSecret.value = accessSecret.trim()
+        _tuyaDeviceIdFutterwache.value = deviceIdFutterwache.trim()
+        _tuyaDeviceIdStallbox.value = deviceIdStallbox.trim()
+        _tuyaApiBase.value = apiBase.trim()
+        prefs.edit()
+            .putString("tuya_access_id", accessId.trim())
+            .putString("tuya_access_secret", accessSecret.trim())
+            .putString("tuya_device_id_futterwache", deviceIdFutterwache.trim())
+            .putString("tuya_device_id_stallbox", deviceIdStallbox.trim())
+            .putString("tuya_api_base", apiBase.trim())
+            .apply()
+        tuyaClientCache = null
+    }
+
+    @Volatile
+    private var tuyaClientCache: Pair<String, TuyaCloudClient>? = null
+
+    /** Direkter Tuya-Client; Instanz wird gecacht, damit der Token-Cache traegt. */
+    private fun tuyaClient(): TuyaCloudClient? {
+        val id = _tuyaAccessId.value
+        val secret = _tuyaAccessSecret.value
+        if (id.isBlank() || secret.isBlank()) return null
+        val schluessel = listOf(
+            id, secret, _tuyaDeviceIdFutterwache.value,
+            _tuyaDeviceIdStallbox.value, _tuyaApiBase.value,
+        ).joinToString("|")
+        tuyaClientCache?.let { (k, client) -> if (k == schluessel) return client }
+        val client = TuyaCloudClient(
+            accessId = id,
+            accessSecret = secret,
+            deviceIds = mapOf(
+                "futterwache" to _tuyaDeviceIdFutterwache.value,
+                "stallbox" to _tuyaDeviceIdStallbox.value,
+            ),
+            apiBase = _tuyaApiBase.value,
+        )
+        tuyaClientCache = schluessel to client
+        return client
+    }
+
+    fun setLiveVollbild(an: Boolean) {
+        _liveVollbild.value = an
+    }
+
+    fun addLiveEreignis(text: String) {
+        val zeit = SimpleDateFormat("HH:mm", Locale.GERMANY).format(Date())
+        _liveEreignisse.value = (listOf(zeit to text) + _liveEreignisse.value).take(6)
+    }
+
+    /**
+     * Loest die Stream-Quelle fuer das Hauptbild auf (Logik aus CameraStream.tsx):
+     * Tuya-faehige Kameras zuerst ueber die Webapp (Session-Cookie + Proxy),
+     * dann direkt ueber die Tuya-OpenAPI, zuletzt Bridge-HLS als Fallback.
+     */
+    suspend fun resolveStreamQuelle(camera: CameraConfig, tuyaErlaubt: Boolean): StreamQuelle? {
+        val s = _streamSettings.value
+        if (camera.tuyaFaehig && tuyaErlaubt) {
+            if (s.isWebappConfigured) {
+                try {
+                    val url = cloudClient.holeTuyaStreamUrl(s.webappUrlClean, camera.tuyaEndpoint)
+                    return StreamQuelle(url, istTuya = true)
+                } catch (e: StallblickCloudClient.NichtAngemeldetException) {
+                    if (versucheAutoLogin()) {
+                        try {
+                            val url = cloudClient.holeTuyaStreamUrl(s.webappUrlClean, camera.tuyaEndpoint)
+                            return StreamQuelle(url, istTuya = true)
+                        } catch (_: Exception) {
+                            // weiter zum naechsten Weg
+                        }
+                    }
+                } catch (_: Exception) {
+                    // Webapp/Tuya nicht erreichbar -> naechster Weg
+                }
+            }
+            tuyaClient()?.let { client ->
+                if (client.konfiguriert(camera.id)) {
+                    try {
+                        return StreamQuelle(client.holeStreamUrl(camera.id), istTuya = true)
+                    } catch (_: Exception) {
+                        // Tuya direkt fehlgeschlagen -> Bridge-Fallback
+                    }
+                }
+            }
+        }
+        if (s.isBridgeConfigured) {
+            return StreamQuelle(s.hlsUrl(camera.streamName), istTuya = false)
+        }
+        return null
+    }
+
+    /** Anmeldung an der Webapp (STALLBLICK_PASSWORT); merkt sich das Passwort fuer Auto-Relogin. */
+    fun cloudLogin(passwort: String) {
+        viewModelScope.launch {
+            _cloudStatus.value = "Anmeldung läuft…"
+            val basis = _streamSettings.value.webappUrlClean
+            if (basis.isEmpty()) {
+                _cloudStatus.value = "Keine Webapp-URL konfiguriert"
+                return@launch
+            }
+            when (val ergebnis = cloudClient.login(basis, passwort)) {
+                is StallblickCloudClient.LoginErgebnis.Ok -> {
+                    prefs.edit().putString("cloud_passwort", passwort).apply()
+                    _cloudStatus.value = "Angemeldet"
+                    syncCloudEreignisse()
+                }
+                is StallblickCloudClient.LoginErgebnis.FalschesPasswort ->
+                    _cloudStatus.value = "Falsches Passwort"
+                is StallblickCloudClient.LoginErgebnis.Fehler ->
+                    _cloudStatus.value = ergebnis.meldung
+            }
+        }
+    }
+
+    fun cloudLogout() {
+        cloudClient.logout()
+        prefs.edit().remove("cloud_passwort").apply()
+        _cloudStatus.value = "Nicht angemeldet"
+    }
+
+    /** Session abgelaufen -> mit gespeichertem Passwort neu anmelden (Cookie gilt 7 Tage). */
+    private suspend fun versucheAutoLogin(): Boolean {
+        val passwort = prefs.getString("cloud_passwort", null) ?: return false
+        val basis = _streamSettings.value.webappUrlClean
+        if (basis.isEmpty()) return false
+        return cloudClient.login(basis, passwort) is StallblickCloudClient.LoginErgebnis.Ok
+    }
+
+    /**
+     * Synchronisiert die KI-Wache-Ereignisse der Webapp (GET /api/events) in
+     * die lokale Room-DB. Demo-Platzhalter der Webapp werden nicht importiert;
+     * Duplikate verhindert die remoteId. Alte Ereignisse (> 60 min) kommen als
+     * bereits gelesen an, damit kein veralteter Alarm-Overlay aufpoppt.
+     */
+    private suspend fun syncCloudEreignisse() {
+        val s = _streamSettings.value
+        if (!s.isWebappConfigured) return
+        try {
+            val daten = cloudClient.holeEreignisse(s.webappUrlClean)
+            _cloudQuelle.value = daten.quelle
+            if (daten.quelle != "edge-agent") return
+            for (e in daten.ereignisse.asReversed()) {
+                if (e.id.isEmpty() || e.nachricht.isEmpty()) continue
+                if (repository.hatEventMitRemoteId(e.id)) continue
+                val zeitpunkt = parseIsoZeit(e.zeit)
+                val frisch = System.currentTimeMillis() - zeitpunkt < 60 * 60 * 1000
+                val event = StallEvent(
+                    typ = e.typ,
+                    kuhId = e.kuhId,
+                    kamera = e.kamera,
+                    nachricht = e.nachricht,
+                    timestamp = zeitpunkt,
+                    konfidenz = e.konfidenz,
+                    resolved = !frisch,
+                    remoteId = e.id,
+                )
+                repository.insertEvent(event)
+                if (frisch) _newIngestedEvent.tryEmit(event)
+            }
+        } catch (e: StallblickCloudClient.NichtAngemeldetException) {
+            if (versucheAutoLogin()) {
+                _cloudStatus.value = "Angemeldet"
+            } else {
+                _cloudStatus.value = "Nicht angemeldet – Session abgelaufen"
+            }
+        } catch (_: Exception) {
+            // Webapp nicht erreichbar -> naechster Poll versucht es erneut.
+        }
+    }
+
+    private fun parseIsoZeit(iso: String): Long {
+        if (iso.isEmpty()) return System.currentTimeMillis()
+        val muster = listOf(
+            "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+            "yyyy-MM-dd'T'HH:mm:ss'Z'",
+            "yyyy-MM-dd'T'HH:mm:ss.SSSXXX",
+            "yyyy-MM-dd'T'HH:mm:ssXXX",
+        )
+        for (m in muster) {
+            try {
+                val f = SimpleDateFormat(m, Locale.US)
+                if (m.endsWith("'Z'")) f.timeZone = TimeZone.getTimeZone("UTC")
+                return f.parse(iso)?.time ?: continue
+            } catch (_: Exception) {
+                // naechstes Muster
+            }
+        }
+        return System.currentTimeMillis()
+    }
+
+    /** Snapshot der Hauptkamera als JPEG in die Galerie speichern (go2rtc frame.jpeg). */
+    fun speichereSnapshot(kameraId: String) {
+        val s = _streamSettings.value
+        val cam = s.cameraById(kameraId)
+        if (!s.isBridgeConfigured) {
+            addLiveEreignis("Snapshot nicht möglich – Bridge nicht verbunden")
+            return
+        }
+        if (!s.snapshotSupported) {
+            addLiveEreignis("Snapshot nicht verfügbar – MediaMTX hat kein Einzelbild-Endpoint")
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val bytes = cloudClient.ladeBytes(
+                    "${s.snapshotUrl(cam.streamName)}&t=${System.currentTimeMillis()}"
+                )
+                withContext(Dispatchers.IO) {
+                    speichereJpeg(bytes, "stallblick-${cam.id}-${System.currentTimeMillis()}.jpg")
+                }
+                addLiveEreignis("Snapshot von ${cam.name} gespeichert")
+            } catch (_: Exception) {
+                addLiveEreignis("Snapshot von ${cam.name} fehlgeschlagen")
+            }
+        }
+    }
+
+    private fun speichereJpeg(bytes: ByteArray, dateiname: String) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val werte = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, dateiname)
+                put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Stallblick")
+            }
+            val uri = context.contentResolver.insert(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI, werte
+            ) ?: throw Exception("MediaStore-Eintrag fehlgeschlagen")
+            context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                ?: throw Exception("Snapshot-Datei nicht beschreibbar")
+        } else {
+            val ordner = context.getExternalFilesDir(Environment.DIRECTORY_PICTURES)
+                ?: context.filesDir
+            File(ordner, dateiname).writeBytes(bytes)
+        }
+    }
+
+    init {
+        // KI-Wache-Ereignisse der Webapp regelmaessig in die lokale DB spiegeln.
+        viewModelScope.launch {
+            while (true) {
+                syncCloudEreignisse()
+                delay(20_000)
+            }
+        }
+    }
 
     init {
         // Automatically monitor events to trigger system alert sound/overlay for important alarms
@@ -234,7 +576,26 @@ class StallViewModel(application: Application) : AndroidViewModel(application) {
                 }, lastActiveTime = System.currentTimeMillis()))
             }
             
-            _ingestSimulationState.value = "API 201 Created: Event erfolgreich lokal registriert!"
+            // Zusaetzlich an die echte Ingest-API der Webapp melden (derselbe Weg
+            // wie der Edge-Agent im Stall), sobald ein Ingest-Token gesetzt ist.
+            val ingestToken = _edgeToken.value
+            val webapp = _streamSettings.value.webappUrlClean
+            val anCloudGemeldet =
+                if (webapp.isNotEmpty() && ingestToken.isNotBlank() && ingestToken != "EDGE_INGEST_TOKEN") {
+                    cloudClient.sendeEreignis(
+                        basisUrl = webapp,
+                        ingestToken = ingestToken,
+                        typ = type,
+                        nachricht = message,
+                        kuhId = cowId,
+                        kamera = camera,
+                        konfidenz = confidence,
+                    )
+                } else false
+
+            _ingestSimulationState.value =
+                if (anCloudGemeldet) "API 201 Created: Event lokal + an Stallblick-Cloud gemeldet!"
+                else "API 201 Created: Event erfolgreich lokal registriert!"
             withContext(Dispatchers.IO) {
                 kotlinx.coroutines.delay(1500)
             }

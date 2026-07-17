@@ -4,7 +4,10 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Bridges im Stall-LAN (go2rtc/MediaMTX auf http://192.168.x.x) liefern
+         Klartext-HTTP; ohne dieses Flag blockiert Android 9+ deren Streams. -->
     <application
+        android:usesCleartextTraffic="true"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
