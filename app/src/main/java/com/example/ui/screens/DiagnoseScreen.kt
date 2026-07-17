@@ -322,8 +322,8 @@ fun DiagnoseScreen(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     listOf(
-                                        "stallwache" to "Box 1: Abkalbe",
-                                        "futterwache" to "Box 2: Futter",
+                                        "futterwache" to "Kam 1: Futterwache",
+                                        "stallwache" to "Kam 2: Stallbox",
                                         "ruhebereich" to "Box 3: Ruhe"
                                     ).forEach { (id, label) ->
                                         val isCamSelected = activeCameraFeed == id
@@ -338,10 +338,10 @@ fun DiagnoseScreen(
                                                 contentColor = if (isCamSelected) Color.White else Color(0xFF44474E)
                                             ),
                                             shape = RoundedCornerShape(8.dp),
-                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
                                             modifier = Modifier.weight(1f).height(36.dp).testTag("live_source_btn_$id")
                                         ) {
-                                            Text(label, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                            Text(label, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                         }
                                     }
                                 }
@@ -636,13 +636,13 @@ fun DiagnoseScreen(
                         onClick = {
                             if (useLiveCameraFeed && capturedImageBase64 != null) {
                                 val camLabel = when (activeCameraFeed) {
-                                    "stallwache" -> "Stallwache (Live-Snapshot)"
-                                    "futterwache" -> "Futterwache (Live-Snapshot)"
+                                    "futterwache" -> "Kamera 1: Futterwache (Live-Snapshot)"
+                                    "stallwache" -> "Kamera 2: Stallbox (Live-Snapshot)"
                                     else -> "Ruhebereich (Live-Snapshot)"
                                 }
                                 val dynamicDesc = when (activeCameraFeed) {
-                                    "stallwache" -> "Live-Snapshot von der Stallwache (Abkalbebereich). Eine Kuh (Berta Kuh #42) steht unruhig im Stroh. YOLOv8-Pose hat einen erhöhten Schwanzwinkel von 47.5° gemessen."
-                                    "futterwache" -> "Live-Snapshot von der Futterwache (Futtertisch). Zwei Kühe überlappen sich im Bild (Zelda Kuh #103 springt auf Alma Kuh #18 auf). YOLO-Detektionen zeigen Rumpfüberlappung IoU 0.22 seit mehreren Sekunden."
+                                    "futterwache" -> "Live-Snapshot von Kamera 1: Futterwache (API-Route /api/stallbox/stream). Futtertisch & Laufgang. Zwei Kühe überlappen sich im Bild (Zelda Kuh #103 springt auf Alma Kuh #18 auf). YOLO-Detektionen zeigen Rumpfüberlappung IoU 0.22 seit mehreren Sekunden."
+                                    "stallwache" -> "Live-Snapshot von Kamera 2: Stallbox (API-Route /api/futterwache/stream). Abkalbebereich. Eine Kuh (Berta Kuh #42) steht unruhig im Stroh. YOLOv8-Pose hat einen erhöhten Schwanzwinkel von 47.5° gemessen."
                                     else -> "Live-Snapshot vom Ruhebereich. Die Kühe liegen friedlich im Liegebereich, atmen ruhig und kauen wieder."
                                 }
                                 val fullDesc = "$dynamicDesc\nFrage des Landwirts: ${customNotes.ifEmpty { "Keine Zusatzfragen." }}"

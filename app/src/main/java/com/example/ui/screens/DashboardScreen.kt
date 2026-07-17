@@ -35,6 +35,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -2445,14 +2446,14 @@ fun BarnLiveStreamFeedContainer(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Stall Selector Tabs (stallwache vs futterwache)
+            // Stall Selector Tabs (futterwache vs stallbox mapping)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 StallTabButton(
                     id = 1,
-                    label = "Kamera: stallwache",
+                    label = "Kamera 1: Futterwache",
                     icon = Icons.Default.Videocam,
                     isSelected = selectedStall == 1,
                     onClick = { selectedStall = 1 },
@@ -2460,7 +2461,7 @@ fun BarnLiveStreamFeedContainer(
                 )
                 StallTabButton(
                     id = 2,
-                    label = "Kamera: futterwache",
+                    label = "Kamera 2: Stallbox",
                     icon = Icons.Default.Videocam,
                     isSelected = selectedStall == 2,
                     onClick = { selectedStall = 2 },
@@ -2491,7 +2492,31 @@ fun BarnLiveStreamFeedContainer(
                     scale(scale = zoomScale, pivot = Offset(width / 2f, height / 2f)) {
                         when (selectedStall) {
                             1 -> {
-                                // Stall 1: Calving Skeletal Cow (Berta)
+                                // Kamera 1: Futterwache (Zelda & Alma mounting)
+                                drawMountingBehaviorPose(
+                                    width = width,
+                                    height = height,
+                                    isMounting = zeldaCow?.status == "Brunstverdacht",
+                                    isIrMode = isIrMode
+                                )
+
+                                // Draw High Contrast / AI tracking bounding box if contrastBoost is active
+                                if (contrastBoost) {
+                                    val boxColor = if (isIrMode) Color.White else Color(0xFF006495)
+                                    val cx = width * 0.45f
+                                    val cy = height * 0.52f
+                                    
+                                    // Bounding Box for mounting behavior
+                                    drawRect(
+                                        color = boxColor,
+                                        topLeft = Offset(cx - 100f, cy - 60f),
+                                        size = Size(200f, 120f),
+                                        style = Stroke(width = 2f)
+                                    )
+                                }
+                            }
+                            2 -> {
+                                // Kamera 2: Stallbox (Berta calving)
                                 drawCowSkeletalPose(
                                     width = width,
                                     height = height,
@@ -2511,30 +2536,6 @@ fun BarnLiveStreamFeedContainer(
                                         color = boxColor,
                                         topLeft = Offset(cx - 70f, cy - 50f),
                                         size = Size(140f, 100f),
-                                        style = Stroke(width = 2f)
-                                    )
-                                }
-                            }
-                            2 -> {
-                                // Stall 2: Mounting Overlapping Behavior (Zelda)
-                                drawMountingBehaviorPose(
-                                    width = width,
-                                    height = height,
-                                    isMounting = zeldaCow?.status == "Brunstverdacht",
-                                    isIrMode = isIrMode
-                                )
-
-                                // Draw High Contrast / AI tracking bounding box if contrastBoost is active
-                                if (contrastBoost) {
-                                    val boxColor = if (isIrMode) Color.White else Color(0xFF006495)
-                                    val cx = width * 0.45f
-                                    val cy = height * 0.52f
-                                    
-                                    // Bounding Box for mounting behavior
-                                    drawRect(
-                                        color = boxColor,
-                                        topLeft = Offset(cx - 100f, cy - 60f),
-                                        size = Size(200f, 120f),
                                         style = Stroke(width = 2f)
                                     )
                                 }
@@ -2616,13 +2617,13 @@ fun BarnLiveStreamFeedContainer(
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
-                        .background(Color.Black.copy(alpha = 0.5f))
+                        .background(Color.Black.copy(alpha = 0.6f))
                         .padding(horizontal = 10.dp, vertical = 6.dp)
                 ) {
                     Text(
                         text = when (selectedStall) {
-                            1 -> "Kamera: stallwache"
-                            else -> "Kamera: futterwache"
+                            1 -> "Kamera 1: Futterwache"
+                            else -> "Kamera 2: Stallbox"
                         },
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
@@ -2630,8 +2631,18 @@ fun BarnLiveStreamFeedContainer(
                     )
                     Text(
                         text = when (selectedStall) {
-                            1 -> bertaCow?.let { "Kuh #42 (Berta) • Schwanzwinkel: ${String.format(Locale.US, "%.1f", it.lastAngle)}°" } ?: "Keine Kuh im Fokus"
-                            else -> zeldaCow?.let { "Kuh #103 (Zelda) • Aktivität erhöht" } ?: "Normales Verhalten"
+                            1 -> "Route: /api/stallbox/stream"
+                            else -> "Route: /api/futterwache/stream"
+                        },
+                        color = Color(0xFF64B5F6),
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 8.sp
+                    )
+                    Text(
+                        text = when (selectedStall) {
+                            1 -> zeldaCow?.let { "Kuh #103 (Zelda) • Aktivität erhöht" } ?: "Normales Verhalten"
+                            else -> bertaCow?.let { "Kuh #42 (Berta) • Schwanzwinkel: ${String.format(Locale.US, "%.1f", it.lastAngle)}°" } ?: "Keine Kuh im Fokus"
                         },
                         color = Color.LightGray,
                         fontSize = 8.sp
@@ -2968,14 +2979,14 @@ fun BarnLiveStreamFeedContainer(
                 onClick = {
                     if (selectedStall == 1) {
                         viewModel.analyzeCameraFrame(
-                            "stallwache",
-                            "Live-Stream Kamera Stallwache: Abkalbebereich. Eine schwarzbunte Holsteinkuh (Berta) wird beobachtet. Ihr Schwanzwinkel liegt aktuell bei 49.5° (erhöht), was auf Wehentätigkeit hindeutet.",
+                            "futterwache",
+                            "Live-Stream Kamera 1: Futterwache (API-Route /api/stallbox/stream). Futtertisch & Laufgang. Zwei Kühe überlappen sich (Kuh #103 Zelda zeigt Aufsprungverhalten auf eine andere Kuh), was auf Brunstverhalten hindeutet.",
                             null
                         )
                     } else {
                         viewModel.analyzeCameraFrame(
-                            "futterwache",
-                            "Live-Stream Kamera Futterwache: Futtertisch & Laufgang. Zwei Kühe überlappen sich (Kuh #103 Zelda zeigt Aufsprungverhalten auf eine andere Kuh), was auf Brunstverhalten hindeutet.",
+                            "stallwache",
+                            "Live-Stream Kamera 2: Stallbox (API-Route /api/futterwache/stream). Abkalbebereich. Eine schwarzbunte Holsteinkuh (Berta) wird beobachtet. Ihr Schwanzwinkel liegt aktuell bei 49.5° (erhöht), was auf Wehentätigkeit hindeutet.",
                             null
                         )
                     }
