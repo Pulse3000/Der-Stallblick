@@ -38,7 +38,6 @@ fun SettingsScreen(
     val edgeStatus by viewModel.edgeStatus.collectAsState()
     val selectedTheme by viewModel.selectedTheme.collectAsState()
     val streamSettings by viewModel.streamSettings.collectAsState()
-    val cloudStatus by viewModel.cloudStatus.collectAsState()
     val tuyaAccessId by viewModel.tuyaAccessId.collectAsState()
     val tuyaAccessSecret by viewModel.tuyaAccessSecret.collectAsState()
     val tuyaDeviceIdFutterwache by viewModel.tuyaDeviceIdFutterwache.collectAsState()
@@ -52,8 +51,6 @@ fun SettingsScreen(
 
     // --- Stallblick Cloud & Streams (Port des Die-Stallwache-Repos) ---
     var webappUrlInput by remember { mutableStateOf(streamSettings.webappUrl) }
-    var cloudPasswortInput by remember { mutableStateOf("") }
-    var showCloudPasswort by remember { mutableStateOf(false) }
     var bridgeUrlInput by remember { mutableStateOf(streamSettings.bridgeUrl) }
     var bridgeTypeInput by remember { mutableStateOf(streamSettings.bridgeType) }
     var streamNameInput by remember { mutableStateOf(streamSettings.streamNameStallwache) }
@@ -339,8 +336,8 @@ fun SettingsScreen(
                     Text(
                         text = "Verbindung zur deployten Stallblick-Webapp (Die-Stallwache auf Vercel): " +
                             "liefert die Tuya-Livestreams von Futterwache/Stallbox und synchronisiert " +
-                            "die echten KI-Wache-Ereignisse ins Dashboard. Login mit dem gemeinsamen " +
-                            "Stallblick-Passwort (STALLBLICK_PASSWORT).",
+                            "die echten KI-Wache-Ereignisse ins Dashboard. Kein Login nötig — die " +
+                            "Webapp wird ohne Passwortschutz betrieben.",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.Gray
                     )
@@ -355,67 +352,16 @@ fun SettingsScreen(
                         shape = RoundedCornerShape(8.dp)
                     )
 
-                    OutlinedTextField(
-                        value = cloudPasswortInput,
-                        onValueChange = { cloudPasswortInput = it },
-                        modifier = Modifier.fillMaxWidth().testTag("cloud_passwort_input"),
-                        label = { Text("Stallblick-Passwort") },
-                        singleLine = true,
-                        shape = RoundedCornerShape(8.dp),
-                        visualTransformation = if (showCloudPasswort) VisualTransformation.None else PasswordVisualTransformation(),
-                        trailingIcon = {
-                            IconButton(onClick = { showCloudPasswort = !showCloudPasswort }) {
-                                Icon(
-                                    imageVector = if (showCloudPasswort) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                    contentDescription = null
-                                )
-                            }
-                        }
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    Button(
+                        onClick = {
+                            viewModel.updateStreamSettings(
+                                streamSettings.copy(webappUrl = webappUrlInput)
+                            )
+                            saveStatusMsg = "Webapp-URL gespeichert!"
+                        },
+                        modifier = Modifier.fillMaxWidth().testTag("save_webapp_btn")
                     ) {
-                        Button(
-                            onClick = {
-                                viewModel.updateStreamSettings(
-                                    streamSettings.copy(webappUrl = webappUrlInput)
-                                )
-                                viewModel.cloudLogin(cloudPasswortInput)
-                                saveStatusMsg = "Cloud-Anmeldung gestartet…"
-                            },
-                            modifier = Modifier.weight(1f).testTag("cloud_login_btn")
-                        ) {
-                            Text("Anmelden")
-                        }
-                        OutlinedButton(
-                            onClick = {
-                                viewModel.cloudLogout()
-                                saveStatusMsg = "Cloud-Session gelöscht."
-                            },
-                            modifier = Modifier.weight(1f).testTag("cloud_logout_btn")
-                        ) {
-                            Text("Abmelden")
-                        }
-                    }
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (cloudStatus.startsWith("Angemeldet")) Icons.Default.CheckCircle else Icons.Default.Info,
-                            contentDescription = null,
-                            tint = if (cloudStatus.startsWith("Angemeldet")) Color(0xFF2E7D32) else Color.Gray,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = "Status: $cloudStatus",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.testTag("cloud_status_text")
-                        )
+                        Text("Webapp-URL speichern")
                     }
                 }
             }

@@ -26,8 +26,8 @@ import com.example.viewmodel.StallViewModel
  *
  * Die three.js-Szene der Webapp laeuft unveraendert im WebView (WebGL) –
  * derselbe Rundgang wie im Browser, inklusive Orbit-/Walk-Modus und
- * Kuh-Steckbriefen. Ist der Passwortschutz aktiv, zeigt die Webapp ihre
- * Login-Seite direkt im WebView an (Session-Cookie bleibt gespeichert).
+ * Kuh-Steckbriefen. Die Webapp laeuft ohne Passwortschutz, daher ist kein
+ * Login noetig.
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable

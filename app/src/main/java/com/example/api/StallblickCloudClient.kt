@@ -1,12 +1,7 @@
 package com.example.api
 
-import android.content.SharedPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.Cookie
-import okhttp3.CookieJar
-import okhttp3.HttpUrl
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -17,92 +12,25 @@ import java.util.concurrent.TimeUnit
 /**
  * Client fuer die deployte Stallblick-Webapp (Die-Stallwache-Repo auf Vercel).
  *
- * Bildet die drei Serverfunktionen der Webapp fuer die native App ab:
- *   - POST /api/login            gemeinsames Passwort (STALLBLICK_PASSWORT) ->
- *                                HMAC-signiertes Session-Cookie (7 Tage)
+ * Bildet die Serverfunktionen der Webapp fuer die native App ab:
  *   - GET  /api/events           Ereignisliste der KI-Wache (neueste zuerst)
  *   - GET  /api/<kamera>/stream  kurzlebige Tuya-HLS-URL (laeuft ueber den
- *                                CORS-Proxy der Webapp; der Session-Cookie
- *                                wird auch von ExoPlayer mitgesendet, weil
- *                                der Player denselben OkHttp-Client nutzt)
+ *                                CORS-Proxy der Webapp)
+ *   - POST /api/events           Ingest mit x-ingest-token (Edge-Agent-Weg)
  *
- * Das Session-Cookie wird in SharedPreferences persistiert, damit ein Login
- * App-Neustarts uebersteht (Laufzeit wie in der Webapp: 7 Tage).
+ * Kein Passwort-Login: Die App greift ohne Session auf die Webapp zu und
+ * erwartet, dass die Webapp offen betrieben wird (STALLBLICK_PASSWORT nicht
+ * gesetzt). Ist die Webapp doch geschuetzt (HTTP 401), schlagen die
+ * Cloud-Aufrufe fehl und die Streams laufen ueber die direkte
+ * Tuya-OpenAPI bzw. die Bridge weiter.
  */
-class StallblickCloudClient(private val prefs: SharedPreferences) {
+class StallblickCloudClient {
 
-    companion object {
-        const val SESSION_COOKIE = "stallblick_session"
-        private const val PREF_COOKIE = "cloud_session_cookie"
-        private const val PREF_COOKIE_HOST = "cloud_session_cookie_host"
-    }
-
-    /** Persistenter Cookie-Speicher nur fuer das Stallblick-Session-Cookie. */
-    private val cookieJar = object : CookieJar {
-        override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
-            for (c in cookies) {
-                if (c.name == SESSION_COOKIE) {
-                    prefs.edit()
-                        .putString(PREF_COOKIE, c.value)
-                        .putString(PREF_COOKIE_HOST, url.host)
-                        .apply()
-                }
-            }
-        }
-
-        override fun loadForRequest(url: HttpUrl): List<Cookie> {
-            val wert = prefs.getString(PREF_COOKIE, null) ?: return emptyList()
-            val host = prefs.getString(PREF_COOKIE_HOST, null) ?: return emptyList()
-            if (url.host != host) return emptyList()
-            return listOf(
-                Cookie.Builder()
-                    .name(SESSION_COOKIE)
-                    .value(wert)
-                    .domain(host)
-                    .path("/")
-                    .build()
-            )
-        }
-    }
-
-    /** Gemeinsamer HTTP-Client – auch ExoPlayer nutzt ihn (Cookie fuer den Tuya-Proxy). */
+    /** Gemeinsamer HTTP-Client – auch ExoPlayer nutzt ihn fuer Proxy-Streams. */
     val http: OkHttpClient = OkHttpClient.Builder()
-        .cookieJar(cookieJar)
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
         .build()
-
-    fun hatSession(): Boolean = prefs.getString(PREF_COOKIE, null) != null
-
-    fun logout() {
-        prefs.edit().remove(PREF_COOKIE).remove(PREF_COOKIE_HOST).apply()
-    }
-
-    sealed class LoginErgebnis {
-        /** Angemeldet – oder Webapp laeuft ohne Passwortschutz. */
-        data object Ok : LoginErgebnis()
-        data object FalschesPasswort : LoginErgebnis()
-        data class Fehler(val meldung: String) : LoginErgebnis()
-    }
-
-    suspend fun login(basisUrl: String, passwort: String): LoginErgebnis =
-        withContext(Dispatchers.IO) {
-            val url = "${basisUrl.trimEnd('/')}/api/login"
-            try {
-                val body = JSONObject().put("passwort", passwort).toString()
-                    .toRequestBody("application/json".toMediaType())
-                http.newCall(Request.Builder().url(url).post(body).build())
-                    .execute().use { res ->
-                        when {
-                            res.isSuccessful -> LoginErgebnis.Ok
-                            res.code == 401 -> LoginErgebnis.FalschesPasswort
-                            else -> LoginErgebnis.Fehler("Login-HTTP-Fehler ${res.code}")
-                        }
-                    }
-            } catch (e: Exception) {
-                LoginErgebnis.Fehler(e.message ?: "Webapp nicht erreichbar")
-            }
-        }
 
     /** Ereignis der KI-Wache, wie es die Webapp liefert (lib/events.ts). */
     data class CloudEreignis(
@@ -123,13 +51,10 @@ class StallblickCloudClient(private val prefs: SharedPreferences) {
         val quelle: String,
     )
 
-    class NichtAngemeldetException : Exception("Webapp meldet 401 – Session abgelaufen")
-
     suspend fun holeEreignisse(basisUrl: String): CloudEreignisse =
         withContext(Dispatchers.IO) {
             val url = "${basisUrl.trimEnd('/')}/api/events"
             http.newCall(Request.Builder().url(url).get().build()).execute().use { res ->
-                if (res.code == 401) throw NichtAngemeldetException()
                 if (!res.isSuccessful) throw Exception("Events-HTTP-Fehler ${res.code}")
                 val json = JSONObject(res.body?.string() ?: "{}")
                 val liste = json.optJSONArray("ereignisse")
@@ -172,7 +97,6 @@ class StallblickCloudClient(private val prefs: SharedPreferences) {
             val basis = basisUrl.trimEnd('/')
             http.newCall(Request.Builder().url("$basis$endpoint").get().build())
                 .execute().use { res ->
-                    if (res.code == 401) throw NichtAngemeldetException()
                     if (!res.isSuccessful) throw Exception("Tuya-HTTP-Fehler ${res.code}")
                     val json = JSONObject(res.body?.string() ?: "{}")
                     val url = json.optString("url")
