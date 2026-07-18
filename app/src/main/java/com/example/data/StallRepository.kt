@@ -20,9 +20,6 @@ class StallRepository(private val stallDao: StallDao) {
 
     suspend fun insertEvent(event: StallEvent) = stallDao.insertEvent(event)
 
-    suspend fun hatEventMitRemoteId(remoteId: String): Boolean =
-        stallDao.countEventsByRemoteId(remoteId) > 0
-
     suspend fun deleteEventById(id: Int) = stallDao.deleteEventById(id)
 
     suspend fun clearAllEvents() = stallDao.clearAllEvents()
