@@ -41,7 +41,7 @@ Stallbox:                     2) direkt Tuya-OpenAPI (HMAC-SHA256, kurzlebige HL
 ## Einrichtung in der App (Tab „Konfig.")
 
 1. **Stallblick Cloud**: Webapp-URL eintragen (Default
-   `https://die-stallwache.vercel.app`). Damit laufen die
+   `https://stallwache.vercel.app`). Damit laufen die
    Futterwache/Stallbox-Streams und der KI-Wache-Ereignis-Sync — ohne Login.
 2. **Kamera-Bridge**: Bridge-URL (Cloudflare-Tunnel-Hostname oder LAN-IP),
    Bridge-Typ (go2rtc/MediaMTX), optional abweichende Stream-Namen.

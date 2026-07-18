@@ -64,7 +64,7 @@ data class StreamSettings(
     val stallboxTuya: Boolean = true,
 ) {
     companion object {
-        const val DEFAULT_WEBAPP_URL = "https://die-stallwache.vercel.app"
+        const val DEFAULT_WEBAPP_URL = "https://stallwache.vercel.app"
     }
 
     val bridgeUrlClean: String get() = bridgeUrl.trim().trimEnd('/')

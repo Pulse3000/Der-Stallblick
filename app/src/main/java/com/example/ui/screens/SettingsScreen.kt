@@ -347,7 +347,7 @@ fun SettingsScreen(
                         onValueChange = { webappUrlInput = it },
                         modifier = Modifier.fillMaxWidth().testTag("webapp_url_input"),
                         label = { Text("Webapp-URL") },
-                        placeholder = { Text("https://die-stallwache.vercel.app") },
+                        placeholder = { Text("https://stallwache.vercel.app") },
                         singleLine = true,
                         shape = RoundedCornerShape(8.dp)
                     )
