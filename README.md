@@ -12,7 +12,7 @@ Oberer Stollenhof.
 | **Live** | Echte Kamera-Streams (Port des Web-Hauptscreens): Stallwache über die go2rtc/MediaMTX-Bridge (HLS via ExoPlayer), Futterwache & Stallbox über die Tuya-Cloud. Rollenwechsel ohne Stream-Neuaufbau, Vollbild, Snapshot in die Galerie, Statusblock, Ereignisliste. |
 | **KI-Wache** | Alarm-Dashboard; synchronisiert die echten Ereignisse der Webapp (`GET /api/events`) in die lokale Room-DB (Dedupe über `remoteId`). |
 | **Herde / KI-Diagnose / Assistent** | Kuh-Verwaltung, Gemini-Diagnose, Stall-Chat. |
-| **Konfig.** | Stallblick-Cloud-Login (`STALLBLICK_PASSWORT`), Bridge-URL & -Typ, Stream-Namen, direkte Tuya-OpenAPI-Zugangsdaten, Gemini-Key, Themes. |
+| **Konfig.** | Webapp-URL der Stallblick-Cloud, Bridge-URL & -Typ, Stream-Namen, direkte Tuya-OpenAPI-Zugangsdaten, Gemini-Key, Themes. |
 
 ## So funktionieren die Kamera-Streams in der APK
 
@@ -21,7 +21,7 @@ Anders als im Browser gibt es nativ kein CORS und kein hls.js — **ExoPlayer
 
 ```
 Stallwache:    Tapo ──RTSP──▶ Bridge (go2rtc/MediaMTX) ──HLS──▶ Cloudflare Tunnel ──▶ ExoPlayer
-Futterwache/   Tuya-Cloud ──▶ 1) Webapp /api/<kamera>/stream (Session-Cookie, Proxy)
+Futterwache/   Tuya-Cloud ──▶ 1) Webapp /api/<kamera>/stream (CORS-Proxy der Webapp)
 Stallbox:                     2) direkt Tuya-OpenAPI (HMAC-SHA256, kurzlebige HLS-URL)
                               3) Fallback: Bridge-HLS
 ```
@@ -32,16 +32,17 @@ Stallbox:                     2) direkt Tuya-OpenAPI (HMAC-SHA256, kurzlebige HL
   (kein JPEG-Endpoint).
 * **Tuya-URLs laufen ab** → bei Player-Fehlern wird automatisch eine frische
   URL angefordert (exponentielles Backoff, Bridge-Fallback wie in der Webapp).
-* Der Webapp-Proxyweg nutzt denselben OkHttp-Client wie der Login, damit das
-  `stallblick_session`-Cookie auch für die Videosegmente mitgesendet wird.
+* Die App greift ohne Login auf die Webapp zu (kein `STALLBLICK_PASSWORT` —
+  die Webapp läuft offen); ist sie doch geschützt, greifen automatisch
+  Tuya-direkt bzw. die Bridge.
 * `android:usesCleartextTraffic="true"` erlaubt Bridges im Stall-LAN
   (`http://192.168.x.x:1984`) ohne Tunnel.
 
 ## Einrichtung in der App (Tab „Konfig.")
 
-1. **Stallblick Cloud**: Webapp-URL (Default `https://die-stallwache.vercel.app`)
-   und das gemeinsame Stallblick-Passwort → „Anmelden". Damit laufen
-   Futterwache/Stallbox-Streams und der KI-Wache-Ereignis-Sync.
+1. **Stallblick Cloud**: Webapp-URL eintragen (Default
+   `https://die-stallwache.vercel.app`). Damit laufen die
+   Futterwache/Stallbox-Streams und der KI-Wache-Ereignis-Sync — ohne Login.
 2. **Kamera-Bridge**: Bridge-URL (Cloudflare-Tunnel-Hostname oder LAN-IP),
    Bridge-Typ (go2rtc/MediaMTX), optional abweichende Stream-Namen.
 3. **Tuya direkt** (optional, ohne Webapp): Access ID/Secret des

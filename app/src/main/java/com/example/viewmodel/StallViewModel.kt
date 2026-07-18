@@ -107,8 +107,8 @@ class StallViewModel(application: Application) : AndroidViewModel(application) {
     // Stallblick Cloud & Kamera-Streams (Port des Die-Stallwache-Repos)
     // ------------------------------------------------------------------
 
-    /** Client fuer die deployte Stallblick-Webapp (Login, Events, Tuya-Streams). */
-    private val cloudClient = StallblickCloudClient(prefs)
+    /** Client fuer die deployte Stallblick-Webapp (Events, Tuya-Streams, Ingest). */
+    private val cloudClient = StallblickCloudClient()
 
     /** Gemeinsamer HTTP-Client – ExoPlayer nutzt ihn fuer Cookie-geschuetzte Proxy-Streams. */
     val cloudHttpClient get() = cloudClient.http
@@ -134,12 +134,6 @@ class StallViewModel(application: Application) : AndroidViewModel(application) {
     private val _tuyaApiBase =
         MutableStateFlow(prefs.getString("tuya_api_base", "https://openapi.tuyaeu.com") ?: "")
     val tuyaApiBase = _tuyaApiBase.asStateFlow()
-
-    /** Login-Status gegen die Webapp ("angemeldet", "nicht angemeldet", Fehlermeldung). */
-    private val _cloudStatus = MutableStateFlow(
-        if (cloudClient.hatSession()) "Angemeldet (Session gespeichert)" else "Nicht angemeldet"
-    )
-    val cloudStatus = _cloudStatus.asStateFlow()
 
     /** Quelle der zuletzt synchronisierten Cloud-Ereignisse: edge-agent | demo | null (kein Sync). */
     private val _cloudQuelle = MutableStateFlow<String?>(null)
@@ -250,17 +244,8 @@ class StallViewModel(application: Application) : AndroidViewModel(application) {
                 try {
                     val url = cloudClient.holeTuyaStreamUrl(s.webappUrlClean, camera.tuyaEndpoint)
                     return StreamQuelle(url, istTuya = true)
-                } catch (e: StallblickCloudClient.NichtAngemeldetException) {
-                    if (versucheAutoLogin()) {
-                        try {
-                            val url = cloudClient.holeTuyaStreamUrl(s.webappUrlClean, camera.tuyaEndpoint)
-                            return StreamQuelle(url, istTuya = true)
-                        } catch (_: Exception) {
-                            // weiter zum naechsten Weg
-                        }
-                    }
                 } catch (_: Exception) {
-                    // Webapp/Tuya nicht erreichbar -> naechster Weg
+                    // Webapp nicht erreichbar oder geschuetzt -> naechster Weg
                 }
             }
             tuyaClient()?.let { client ->
@@ -277,43 +262,6 @@ class StallViewModel(application: Application) : AndroidViewModel(application) {
             return StreamQuelle(s.hlsUrl(camera.streamName), istTuya = false)
         }
         return null
-    }
-
-    /** Anmeldung an der Webapp (STALLBLICK_PASSWORT); merkt sich das Passwort fuer Auto-Relogin. */
-    fun cloudLogin(passwort: String) {
-        viewModelScope.launch {
-            _cloudStatus.value = "Anmeldung läuft…"
-            val basis = _streamSettings.value.webappUrlClean
-            if (basis.isEmpty()) {
-                _cloudStatus.value = "Keine Webapp-URL konfiguriert"
-                return@launch
-            }
-            when (val ergebnis = cloudClient.login(basis, passwort)) {
-                is StallblickCloudClient.LoginErgebnis.Ok -> {
-                    prefs.edit().putString("cloud_passwort", passwort).apply()
-                    _cloudStatus.value = "Angemeldet"
-                    syncCloudEreignisse()
-                }
-                is StallblickCloudClient.LoginErgebnis.FalschesPasswort ->
-                    _cloudStatus.value = "Falsches Passwort"
-                is StallblickCloudClient.LoginErgebnis.Fehler ->
-                    _cloudStatus.value = ergebnis.meldung
-            }
-        }
-    }
-
-    fun cloudLogout() {
-        cloudClient.logout()
-        prefs.edit().remove("cloud_passwort").apply()
-        _cloudStatus.value = "Nicht angemeldet"
-    }
-
-    /** Session abgelaufen -> mit gespeichertem Passwort neu anmelden (Cookie gilt 7 Tage). */
-    private suspend fun versucheAutoLogin(): Boolean {
-        val passwort = prefs.getString("cloud_passwort", null) ?: return false
-        val basis = _streamSettings.value.webappUrlClean
-        if (basis.isEmpty()) return false
-        return cloudClient.login(basis, passwort) is StallblickCloudClient.LoginErgebnis.Ok
     }
 
     /**
@@ -347,14 +295,8 @@ class StallViewModel(application: Application) : AndroidViewModel(application) {
                 repository.insertEvent(event)
                 if (frisch) _newIngestedEvent.tryEmit(event)
             }
-        } catch (e: StallblickCloudClient.NichtAngemeldetException) {
-            if (versucheAutoLogin()) {
-                _cloudStatus.value = "Angemeldet"
-            } else {
-                _cloudStatus.value = "Nicht angemeldet – Session abgelaufen"
-            }
         } catch (_: Exception) {
-            // Webapp nicht erreichbar -> naechster Poll versucht es erneut.
+            // Webapp nicht erreichbar/geschuetzt -> naechster Poll versucht es erneut.
         }
     }
 
@@ -425,6 +367,13 @@ class StallViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     init {
+        // Reste des frueheren Cloud-Logins aus den Preferences entfernen.
+        prefs.edit()
+            .remove("cloud_passwort")
+            .remove("cloud_session_cookie")
+            .remove("cloud_session_cookie_host")
+            .apply()
+
         // KI-Wache-Ereignisse der Webapp regelmaessig in die lokale DB spiegeln.
         viewModelScope.launch {
             while (true) {
