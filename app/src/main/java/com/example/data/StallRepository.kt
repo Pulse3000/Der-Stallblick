@@ -30,4 +30,17 @@ class StallRepository(private val stallDao: StallDao) {
     suspend fun insertReport(report: AnalysisReport) = stallDao.insertReport(report)
 
     suspend fun deleteReportById(id: Int) = stallDao.deleteReportById(id)
+
+    // --- Monitoring Logs ---
+    val allMonitoringLogs: Flow<List<CowMonitoringLog>> = stallDao.getAllMonitoringLogs()
+
+    fun getMonitoringLogsByType(eventType: String): Flow<List<CowMonitoringLog>> = stallDao.getLogsByEventType(eventType)
+
+    suspend fun insertMonitoringLog(log: CowMonitoringLog) = stallDao.insertMonitoringLog(log)
+
+    suspend fun updateMonitoringLogStatus(id: Long, status: String) = stallDao.updateMonitoringLogStatus(id, status)
+
+    suspend fun deleteMonitoringLogById(id: Long) = stallDao.deleteMonitoringLogById(id)
+
+    suspend fun clearAllMonitoringLogs() = stallDao.clearAllMonitoringLogs()
 }

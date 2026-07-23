@@ -79,6 +79,48 @@ fun MyApplicationTheme(
         )
       }
 
+      themeType == "BARN_MODE" -> {
+        // High Contrast for Outdoor/Barn usage
+        lightColorScheme(
+          primary = Color(0xFF000000),
+          secondary = Color(0xFFD32F2F),
+          tertiary = Color(0xFFFFFFFF),
+          background = Color(0xFFFFFFFF),
+          surface = Color(0xFFF0F0F0),
+          onPrimary = Color.White,
+          onSecondary = Color.White,
+          onTertiary = Color.Black,
+          onBackground = Color.Black,
+          onSurface = Color.Black,
+          error = Color(0xFFB00020),
+          surfaceVariant = Color(0xFFE0E0E0),
+          onSurfaceVariant = Color.Black,
+          outline = Color.Black,
+          outlineVariant = Color.Black
+        )
+      }
+
+      themeType == "NIGHT_VISION" -> {
+        // IR/Night vision theme (Green/Monochrome)
+        darkColorScheme(
+          primary = Color(0xFF00FF41),
+          secondary = Color(0xFF003B00),
+          tertiary = Color(0xFF0D0208),
+          background = Color(0xFF000800),
+          surface = Color(0xFF001100),
+          onPrimary = Color.Black,
+          onSecondary = Color(0xFF00FF41),
+          onTertiary = Color(0xFF00FF41),
+          onBackground = Color(0xFF00FF41),
+          onSurface = Color(0xFF00FF41),
+          error = Color(0xFFFF0000),
+          surfaceVariant = Color(0xFF002200),
+          onSurfaceVariant = Color(0xFF00FF41),
+          outline = Color(0xFF00FF41),
+          outlineVariant = Color(0xFF005500)
+        )
+      }
+
       themeType == "CLASSIC_BLUE" -> {
         if (darkTheme) {
           darkColorScheme(

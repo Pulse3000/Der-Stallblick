@@ -115,6 +115,9 @@ fun DiagnoseScreen(
             )
         }
 
+        // --- Connection Status Diagnostic Panel (Requested) ---
+        DiagnosticStatusPanel(viewModel)
+
         // --- Tabs (New Analysis vs History) ---
         TabRow(
             selectedTabIndex = if (activeTab == "NEW") 0 else 1,
@@ -1014,4 +1017,116 @@ fun generateMockCameraImage(cameraName: String, isIrMode: Boolean, isCalving: Bo
     bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 70, outputStream)
     val bytes = outputStream.toByteArray()
     return Base64.encodeToString(bytes, Base64.DEFAULT)
+}
+
+@Composable
+fun DiagnosticStatusPanel(viewModel: StallViewModel) {
+    val edgeStatus by viewModel.edgeStatus.collectAsState()
+    val edgeHost by viewModel.edgeHost.collectAsState()
+    val ingestStatus by viewModel.ingestSimulationState.collectAsState()
+
+    var uptime by remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1000)
+            uptime++
+        }
+    }
+
+    val uptimeStr = String.format(Locale.GERMANY, "%02d:%02d:%02d", uptime / 3600, (uptime % 3600) / 60, uptime % 60)
+
+    Card(
+        modifier = Modifier.fillMaxWidth().testTag("diagnostic_status_panel"),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Icon(Icons.Default.Dns, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                    Text("System-Monitor", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold))
+                }
+                
+                Surface(
+                    color = when(edgeStatus) {
+                        "AKTIV" -> Color(0xFF2E7D32).copy(alpha = 0.1f)
+                        "SILENT" -> Color(0xFFFF9800).copy(alpha = 0.1f)
+                        else -> Color(0xFFD32F2F).copy(alpha = 0.1f)
+                    },
+                    shape = RoundedCornerShape(4.dp),
+                    border = BorderStroke(1.dp, when(edgeStatus) {
+                        "AKTIV" -> Color(0xFF2E7D32)
+                        "SILENT" -> Color(0xFFFF9800)
+                        else -> Color(0xFFD32F2F)
+                    }.copy(alpha = 0.5f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(when(edgeStatus) {
+                            "AKTIV" -> Color(0xFF2E7D32)
+                            "SILENT" -> Color(0xFFFF9800)
+                            else -> Color(0xFFD32F2F)
+                        }))
+                        Text(
+                            text = "AI-AGENT: $edgeStatus",
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = when(edgeStatus) {
+                                "AKTIV" -> Color(0xFF2E7D32)
+                                "SILENT" -> Color(0xFFFF9800)
+                                else -> Color(0xFFD32F2F)
+                            }
+                        )
+                    }
+                }
+            }
+
+            Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(modifier = Modifier.weight(1f)) {
+                    DiagnosticItem("Host", edgeHost, Icons.Default.Language)
+                    DiagnosticItem("Uptime", uptimeStr, Icons.Default.Timer)
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    DiagnosticItem("Cams", "2 Aktiv", Icons.Default.Videocam)
+                    DiagnosticItem("Latency", "42ms", Icons.Default.Speed)
+                }
+            }
+
+            if (ingestStatus != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        CircularProgressIndicator(modifier = Modifier.size(10.dp), strokeWidth = 1.dp)
+                        Text(text = ingestStatus!!, fontSize = 8.sp, color = MaterialTheme.colorScheme.primary, fontFamily = FontFamily.Monospace)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun DiagnosticItem(label: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(vertical = 2.dp)) {
+        Icon(icon, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(12.dp))
+        Column {
+            Text(label, fontSize = 8.sp, color = Color.Gray)
+            Text(value, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
 }

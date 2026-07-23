@@ -379,7 +379,9 @@ fun SettingsScreen(
                     listOf(
                         Triple("ORGANIC_GREEN", "Bio-Hof Waldgrün", "Natürliche, warme Erdtöne für ein nachhaltiges, entspanntes Lesegefühl."),
                         Triple("CLASSIC_BLUE", "Klassisch Blau", "Klares, professionelles High-Tech Layout mit starkem Kontrast."),
-                        Triple("MIDNIGHT_DARK", "Stallwache Midnight Dark", "Augenschonende Infrarot-Nachtoptik für späte Kontrollgänge im Stall.")
+                        Triple("MIDNIGHT_DARK", "Stallwache Midnight Dark", "Augenschonende Infrarot-Nachtoptik für späte Kontrollgänge im Stall."),
+                        Triple("BARN_MODE", "Outdoor Kontrast", "Maximale Lesbarkeit bei starkem Sonnenlicht oder schwierigen Lichtverhältnissen."),
+                        Triple("NIGHT_VISION", "IR Night Vision", "Monochromes Infrarot-Thema für die nächtliche Geburtsüberwachung.")
                     ).forEach { (themeId, label, desc) ->
                         val isSelected = selectedTheme == themeId
                         val border = if (isSelected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary)

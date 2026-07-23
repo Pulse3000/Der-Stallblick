@@ -10,8 +10,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 @Database(
-    entities = [Cow::class, StallEvent::class, AnalysisReport::class],
-    version = 2,
+    entities = [Cow::class, StallEvent::class, AnalysisReport::class, CowMonitoringLog::class],
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -55,6 +55,11 @@ abstract class AppDatabase : RoomDatabase() {
                     // Seed prefilled events
                     StallEvent.getPrefilledEvents().forEach { event ->
                         dao.insertEvent(event)
+                    }
+
+                    // Seed prefilled monitoring logs
+                    CowMonitoringLog.getPrefilledLogs().forEach { log ->
+                        dao.insertMonitoringLog(log)
                     }
                 }
             }

@@ -44,4 +44,23 @@ interface StallDao {
 
     @Query("DELETE FROM analysis_reports WHERE id = :id")
     suspend fun deleteReportById(id: Int)
+
+    // --- Cow Monitoring Logs Queries ---
+    @Query("SELECT * FROM cow_monitoring_logs ORDER BY timestamp DESC")
+    fun getAllMonitoringLogs(): Flow<List<CowMonitoringLog>>
+
+    @Query("SELECT * FROM cow_monitoring_logs WHERE eventType = :eventType ORDER BY timestamp DESC")
+    fun getLogsByEventType(eventType: String): Flow<List<CowMonitoringLog>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMonitoringLog(log: CowMonitoringLog)
+
+    @Query("UPDATE cow_monitoring_logs SET status = :status WHERE id = :id")
+    suspend fun updateMonitoringLogStatus(id: Long, status: String)
+
+    @Query("DELETE FROM cow_monitoring_logs WHERE id = :id")
+    suspend fun deleteMonitoringLogById(id: Long)
+
+    @Query("DELETE FROM cow_monitoring_logs")
+    suspend fun clearAllMonitoringLogs()
 }

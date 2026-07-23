@@ -40,6 +40,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.StallEvent
+import com.example.ui.components.BarnCameraXPreviewCard
+import com.example.ui.components.CameraXLiveFeedView
+import com.example.ui.components.RoomMonitoringLogsDashboardCard
 import com.example.viewmodel.StallViewModel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
@@ -230,6 +233,15 @@ fun DashboardScreen(
                             viewModel = viewModel,
                             bertaCow = bertaCow,
                             zeldaCow = zeldaCow
+                        )
+
+                        BarnCameraXPreviewCard(
+                            viewModel = viewModel,
+                            cameraTitle = "Direkte Stallkamera (CameraX Feed)"
+                        )
+
+                        RoomMonitoringLogsDashboardCard(
+                            viewModel = viewModel
                         )
 
                         Row(
@@ -646,6 +658,21 @@ fun DashboardScreen(
                 viewModel = viewModel,
                 bertaCow = bertaCow,
                 zeldaCow = zeldaCow
+            )
+        }
+
+        // --- DIRECT BARN CAMERAX PREVIEW FEED ---
+        item {
+            BarnCameraXPreviewCard(
+                viewModel = viewModel,
+                cameraTitle = "Direkte Stallkamera (CameraX Feed)"
+            )
+        }
+
+        // --- ROOM DATABASE COW MONITORING LOGS SUMMARY & QUICK STATUS ---
+        item {
+            RoomMonitoringLogsDashboardCard(
+                viewModel = viewModel
             )
         }
 
@@ -2446,14 +2473,14 @@ fun BarnLiveStreamFeedContainer(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Stall Selector Tabs (futterwache vs stallbox mapping)
+            // Stall Selector Tabs (futterwache vs stallbox mapping vs CameraX)
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 StallTabButton(
                     id = 1,
-                    label = "Kamera 1: Futterwache",
+                    label = "Cam 1: Futterwache",
                     icon = Icons.Default.Videocam,
                     isSelected = selectedStall == 1,
                     onClick = { selectedStall = 1 },
@@ -2461,10 +2488,18 @@ fun BarnLiveStreamFeedContainer(
                 )
                 StallTabButton(
                     id = 2,
-                    label = "Kamera 2: Stallbox",
+                    label = "Cam 2: Stallbox",
                     icon = Icons.Default.Videocam,
                     isSelected = selectedStall == 2,
                     onClick = { selectedStall = 2 },
+                    modifier = Modifier.weight(1f)
+                )
+                StallTabButton(
+                    id = 3,
+                    label = "Cam 3: CameraX",
+                    icon = Icons.Default.CameraAlt,
+                    isSelected = selectedStall == 3,
+                    onClick = { selectedStall = 3 },
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -2479,12 +2514,15 @@ fun BarnLiveStreamFeedContainer(
                     .clip(RoundedCornerShape(16.dp))
                     .border(1.dp, Color(0xFFC5C6D0), RoundedCornerShape(16.dp))
             ) {
-                // Drawing Stream content
-                Canvas(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(if (isIrMode) Color(0xFF1C1C1C) else Color(0xFF101411))
-                ) {
+                if (selectedStall == 3) {
+                    CameraXLiveFeedView()
+                } else {
+                    // Drawing Stream content
+                    Canvas(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(if (isIrMode) Color(0xFF1C1C1C) else Color(0xFF101411))
+                    ) {
                     val width = size.width
                     val height = size.height
 
@@ -2631,8 +2669,8 @@ fun BarnLiveStreamFeedContainer(
                     )
                     Text(
                         text = when (selectedStall) {
-                            1 -> "Route: /api/stallbox/stream"
-                            else -> "Route: /api/futterwache/stream"
+                            1 -> "Route: /api/futterwache/stream"
+                            else -> "Route: /api/stallbox/stream"
                         },
                         color = Color(0xFF64B5F6),
                         fontWeight = FontWeight.Bold,
@@ -2764,6 +2802,7 @@ fun BarnLiveStreamFeedContainer(
                     }
                 }
             }
+        }
 
             Spacer(modifier = Modifier.height(10.dp))
 

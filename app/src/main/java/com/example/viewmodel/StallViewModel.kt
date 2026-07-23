@@ -37,6 +37,9 @@ class StallViewModel(application: Application) : AndroidViewModel(application) {
     val reports: StateFlow<List<AnalysisReport>> = repository.allReports
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val monitoringLogs: StateFlow<List<CowMonitoringLog>> = repository.allMonitoringLogs
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     // --- Settings States ---
     private val _edgeHost = MutableStateFlow(prefs.getString("edge_host", "192.168.1.120") ?: "192.168.1.120")
     val edgeHost = _edgeHost.asStateFlow()
@@ -221,6 +224,20 @@ class StallViewModel(application: Application) : AndroidViewModel(application) {
             )
             repository.insertEvent(newEvent)
             _newIngestedEvent.tryEmit(newEvent)
+            
+            // Send FCM System Notification
+            com.example.util.StallNotificationManager.sendFcmAlert(
+                context = context,
+                title = when (type) {
+                    "austreibung" -> "SOFORT-ALARM: KALBUNG ($cowId)"
+                    "eskalation" -> "DRINGENDE ESKALATION ($cowId)"
+                    "brunstverdacht" -> "BRUNSTVERDACHT ($cowId)"
+                    else -> "KALBEVERDACHT ($cowId)"
+                },
+                message = message,
+                eventType = type,
+                cowId = cowId
+            )
             
             // Also update the cow's status in database
             val cow = repository.getCowById(cowId)
@@ -418,6 +435,66 @@ class StallViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearAnalyzerResult() {
         _analyzerResult.value = null
+    }
+
+    fun markFalseAlarm(cowId: String?, eventType: String, cameraLocation: String, description: String = "Manuelle Täuschungs-Markierung durch Landwirt") {
+        viewModelScope.launch {
+            val log = CowMonitoringLog(
+                eventType = "Fehlalarm",
+                status = "FalseAlarm",
+                cowId = cowId,
+                cameraLocation = cameraLocation,
+                description = "TÄUSCHUNG/FEHLALARM MARKIRT ($eventType): $description. Frame in ./aufnahmen zur KI-Modellschulung (YOLOv8 Retraining) gespeichert.",
+                confidence = 0.0
+            )
+            repository.insertMonitoringLog(log)
+            
+            val event = StallEvent(
+                typ = "info",
+                kuhId = cowId,
+                kamera = cameraLocation,
+                nachricht = "🎯 Manuelle Korrektur: $eventType für ${cowId ?: "Stallkamera"} als Fehlalarm markiert. Frame für KI-Retraining gespeichert.",
+                konfidenz = 0.0
+            )
+            repository.insertEvent(event)
+        }
+    }
+
+    // --- Monitoring Logs Operations ---
+    fun addMonitoringLog(eventType: String, status: String, cowId: String?, cameraLocation: String, description: String, confidence: Double? = null) {
+        viewModelScope.launch {
+            val log = CowMonitoringLog(
+                eventType = eventType,
+                status = status,
+                cowId = cowId,
+                cameraLocation = cameraLocation,
+                description = description,
+                confidence = confidence
+            )
+            repository.insertMonitoringLog(log)
+
+            if (!status.equals("Resolved", ignoreCase = true)) {
+                com.example.util.StallNotificationManager.sendFcmAlert(
+                    context = context,
+                    title = "NEUER KAMERA-ALARM: $eventType (${cowId ?: cameraLocation})",
+                    message = description,
+                    eventType = eventType.lowercase(Locale.GERMANY),
+                    cowId = cowId
+                )
+            }
+        }
+    }
+
+    fun updateMonitoringLogStatus(id: Long, newStatus: String) {
+        viewModelScope.launch {
+            repository.updateMonitoringLogStatus(id, newStatus)
+        }
+    }
+
+    fun deleteMonitoringLog(id: Long) {
+        viewModelScope.launch {
+            repository.deleteMonitoringLogById(id)
+        }
     }
 }
 

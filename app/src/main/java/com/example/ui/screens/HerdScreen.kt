@@ -1621,7 +1621,7 @@ fun SimulatedLiveStreamPlayer(
                     fontSize = 10.sp
                 )
                 Text(
-                    text = if (selectedStall == 1) "Route: /api/stallbox/stream" else "Route: /api/futterwache/stream",
+                    text = if (selectedStall == 1) "Route: /api/futterwache/stream" else "Route: /api/stallbox/stream",
                     color = Color(0xFF64B5F6),
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
