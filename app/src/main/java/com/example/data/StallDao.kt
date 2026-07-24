@@ -63,4 +63,26 @@ interface StallDao {
 
     @Query("DELETE FROM cow_monitoring_logs")
     suspend fun clearAllMonitoringLogs()
+
+    // --- Health Events Queries ---
+    @Query("SELECT * FROM health_events ORDER BY timestamp DESC")
+    fun getAllHealthEvents(): Flow<List<HealthEvent>>
+
+    @Query("SELECT * FROM health_events WHERE animalId = :animalId ORDER BY timestamp DESC")
+    fun getHealthEventsByAnimalId(animalId: String): Flow<List<HealthEvent>>
+
+    @Query("SELECT * FROM health_events WHERE status = :status ORDER BY timestamp DESC")
+    fun getHealthEventsByStatus(status: String): Flow<List<HealthEvent>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertHealthEvent(healthEvent: HealthEvent)
+
+    @Query("UPDATE health_events SET status = :status WHERE id = :id")
+    suspend fun updateHealthEventStatus(id: Long, status: String)
+
+    @Query("DELETE FROM health_events WHERE id = :id")
+    suspend fun deleteHealthEventById(id: Long)
+
+    @Query("DELETE FROM health_events")
+    suspend fun clearAllHealthEvents()
 }

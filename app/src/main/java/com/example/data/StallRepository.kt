@@ -43,4 +43,19 @@ class StallRepository(private val stallDao: StallDao) {
     suspend fun deleteMonitoringLogById(id: Long) = stallDao.deleteMonitoringLogById(id)
 
     suspend fun clearAllMonitoringLogs() = stallDao.clearAllMonitoringLogs()
+
+    // --- Health Events ---
+    val allHealthEvents: Flow<List<HealthEvent>> = stallDao.getAllHealthEvents()
+
+    fun getHealthEventsByAnimalId(animalId: String): Flow<List<HealthEvent>> = stallDao.getHealthEventsByAnimalId(animalId)
+
+    fun getHealthEventsByStatus(status: String): Flow<List<HealthEvent>> = stallDao.getHealthEventsByStatus(status)
+
+    suspend fun insertHealthEvent(healthEvent: HealthEvent) = stallDao.insertHealthEvent(healthEvent)
+
+    suspend fun updateHealthEventStatus(id: Long, status: String) = stallDao.updateHealthEventStatus(id, status)
+
+    suspend fun deleteHealthEventById(id: Long) = stallDao.deleteHealthEventById(id)
+
+    suspend fun clearAllHealthEvents() = stallDao.clearAllHealthEvents()
 }

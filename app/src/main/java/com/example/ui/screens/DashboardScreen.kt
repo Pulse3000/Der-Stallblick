@@ -219,6 +219,11 @@ fun DashboardScreen(
                     }
                 }
 
+                // HERD MONITORED STATE SUMMARY (Calving vs Oestrus count)
+                MonitoredStateSummaryCard(
+                    cows = cows
+                )
+
                 // Bento-style 2-Column Grid Layout (Tailwind Grid Mockup)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -592,6 +597,13 @@ fun DashboardScreen(
                     }
                 }
             }
+        }
+
+        // --- HERD MONITORED STATE SUMMARY VIEW (Calving vs Oestrus Count) ---
+        item {
+            MonitoredStateSummaryCard(
+                cows = cows
+            )
         }
 
         // --- BENTO GRID: MAIN ALERT CARD (High Priority) ---
@@ -3442,4 +3454,267 @@ fun BentoSystemStatusCard(
         }
     }
 }
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun MonitoredStateSummaryCard(
+    cows: List<com.example.data.Cow>,
+    modifier: Modifier = Modifier
+) {
+    val calvingCows = remember(cows) {
+        cows.filter {
+            it.status.contains("Kalbung", ignoreCase = true) ||
+            it.status.contains("Kalbe", ignoreCase = true) ||
+            it.status.contains("Austreibung", ignoreCase = true)
+        }
+    }
+
+    val oestrusCows = remember(cows) {
+        cows.filter {
+            it.status.contains("Brunst", ignoreCase = true) ||
+            it.status.contains("Oestrus", ignoreCase = true) ||
+            it.status.contains("Aufsprung", ignoreCase = true)
+        }
+    }
+
+    val totalMonitored = calvingCows.size + oestrusCows.size
+    val totalHerd = cows.size
+
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("monitored_state_summary_card"),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        shape = RoundedCornerShape(24.dp),
+        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            // Header Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF0F172A)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Visibility,
+                            contentDescription = "Überwachung",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    Column {
+                        Text(
+                            text = "Überwachungs-Status der Herde",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            ),
+                            color = Color(0xFF0F172A)
+                        )
+                        Text(
+                            text = "$totalMonitored von $totalHerd Tieren in aktiver KI-Beobachtung",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFF64748B)
+                        )
+                    }
+                }
+
+                Surface(
+                    color = if (totalMonitored > 0) Color(0xFFFFEDD5) else Color(0xFFF1F5F9),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(if (totalMonitored > 0) Color(0xFFEA580C) else Color(0xFF64748B))
+                        )
+                        Text(
+                            text = if (totalMonitored > 0) "$totalMonitored AKTIV" else "ALLES RUHIG",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (totalMonitored > 0) Color(0xFF9A3412) else Color(0xFF475569)
+                        )
+                    }
+                }
+            }
+
+            // Stat Cards Grid Row (Calving vs Oestrus)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // CALVING (KALBUNG) STAT CARD
+                Card(
+                    modifier = Modifier.weight(1f),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFEF2F2)),
+                    shape = RoundedCornerShape(18.dp),
+                    border = BorderStroke(1.dp, Color(0xFFFCA5A5))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ChildCare,
+                                    contentDescription = "Kalbung",
+                                    tint = Color(0xFFDC2626),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    text = "Kalbung",
+                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                    color = Color(0xFF991B1B)
+                                )
+                            }
+
+                            Text(
+                                text = "${calvingCows.size}",
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 24.sp
+                                ),
+                                color = Color(0xFFDC2626)
+                            )
+                        }
+
+                        if (calvingCows.isNotEmpty()) {
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                calvingCows.forEach { cow ->
+                                    Surface(
+                                        color = Color(0xFFFEE2E2),
+                                        shape = RoundedCornerShape(8.dp),
+                                        border = BorderStroke(0.5.dp, Color(0xFFF87171))
+                                    ) {
+                                        Text(
+                                            text = "${cow.name} (${cow.id})",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF7F1D1D),
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            Text(
+                                text = "Keine Kühe im Kalbebereich",
+                                fontSize = 11.sp,
+                                color = Color(0xFF9CA3AF)
+                            )
+                        }
+                    }
+                }
+
+                // OESTRUS (BRUNST) STAT CARD
+                Card(
+                    modifier = Modifier.weight(1f),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF0F9FF)),
+                    shape = RoundedCornerShape(18.dp),
+                    border = BorderStroke(1.dp, Color(0xFFBAE6FD))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.LocalActivity,
+                                    contentDescription = "Brunst",
+                                    tint = Color(0xFF0284C7),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    text = "Brunst",
+                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                    color = Color(0xFF075985)
+                                )
+                            }
+
+                            Text(
+                                text = "${oestrusCows.size}",
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 24.sp
+                                ),
+                                color = Color(0xFF0284C7)
+                            )
+                        }
+
+                        if (oestrusCows.isNotEmpty()) {
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                oestrusCows.forEach { cow ->
+                                    Surface(
+                                        color = Color(0xFFE0F2FE),
+                                        shape = RoundedCornerShape(8.dp),
+                                        border = BorderStroke(0.5.dp, Color(0xFF38BDF8))
+                                    ) {
+                                        Text(
+                                            text = "${cow.name} (${cow.id})",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF0C4A6E),
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            Text(
+                                text = "Keine Brunstanzeichen erkannt",
+                                fontSize = 11.sp,
+                                color = Color(0xFF9CA3AF)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 

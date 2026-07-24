@@ -40,12 +40,18 @@ class StallViewModel(application: Application) : AndroidViewModel(application) {
     val monitoringLogs: StateFlow<List<CowMonitoringLog>> = repository.allMonitoringLogs
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val healthEvents: StateFlow<List<HealthEvent>> = repository.allHealthEvents
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     // --- Settings States ---
     private val _edgeHost = MutableStateFlow(prefs.getString("edge_host", "192.168.1.120") ?: "192.168.1.120")
     val edgeHost = _edgeHost.asStateFlow()
 
     private val _edgeToken = MutableStateFlow(prefs.getString("edge_token", "EDGE_INGEST_TOKEN") ?: "EDGE_INGEST_TOKEN")
     val edgeToken = _edgeToken.asStateFlow()
+
+    private val _tuyaApiKey = MutableStateFlow(prefs.getString("tuya_api_key", BuildConfig.TUYA_API_KEY) ?: BuildConfig.TUYA_API_KEY)
+    val tuyaApiKey = _tuyaApiKey.asStateFlow()
 
     private val _customApiKey = MutableStateFlow(prefs.getString("custom_api_key", "") ?: "")
     val customApiKey = _customApiKey.asStateFlow()
