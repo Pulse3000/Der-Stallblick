@@ -53,9 +53,12 @@ class StallViewModel(application: Application) : AndroidViewModel(application) {
     private val _tuyaApiKey = MutableStateFlow(prefs.getString("tuya_api_key", BuildConfig.TUYA_API_KEY) ?: BuildConfig.TUYA_API_KEY)
     val tuyaApiKey = _tuyaApiKey.asStateFlow()
 
-    private val DEFAULT_TUYA_CAST_URL = "https://eu.device.tuya.ai/m/universal-app-link/084e213f-8b84-47dc-bfbd-aa4113a3722a/cast/run?project_id=289769812&home_id=289769812&__customLayout__=HIDE_SIDER%2CHIDE_HEADER"
+    private val DEFAULT_TUYA_CAST_URL = "https://eu.device.tuya.ai/apps/2031672725390491705/cast/run/2080517802954850373?project_id=289769812&home_id=289769812&__customLayout__=HIDE_SIDER%2CHIDE_HEADER&cast_preview=1&pin=0000"
     private val _tuyaCastUrl = MutableStateFlow(prefs.getString("tuya_cast_url", DEFAULT_TUYA_CAST_URL) ?: DEFAULT_TUYA_CAST_URL)
     val tuyaCastUrl = _tuyaCastUrl.asStateFlow()
+
+    private val _tuyaPin = MutableStateFlow(prefs.getString("tuya_pin", "0000") ?: "0000")
+    val tuyaPin = _tuyaPin.asStateFlow()
 
     private val _tuyaAbkalbeboxDeviceId = MutableStateFlow(prefs.getString("tuya_abkalbebox_device_id", "bf90bd252109467770gshm") ?: "bf90bd252109467770gshm")
     val tuyaAbkalbeboxDeviceId = _tuyaAbkalbeboxDeviceId.asStateFlow()
@@ -164,6 +167,17 @@ class StallViewModel(application: Application) : AndroidViewModel(application) {
     fun updateTuyaCastUrl(url: String) {
         _tuyaCastUrl.value = url
         prefs.edit().putString("tuya_cast_url", url).apply()
+    }
+
+    fun updateTuyaPin(pin: String) {
+        _tuyaPin.value = pin
+        prefs.edit().putString("tuya_pin", pin).apply()
+        // If pin changed, ensure url has pin updated
+        val currentUrl = _tuyaCastUrl.value
+        val urlWithoutPin = if (currentUrl.contains("&pin=")) currentUrl.substringBefore("&pin=") else currentUrl
+        val updatedUrl = if (urlWithoutPin.contains("?")) "$urlWithoutPin&pin=$pin" else "$urlWithoutPin?pin=$pin"
+        _tuyaCastUrl.value = updatedUrl
+        prefs.edit().putString("tuya_cast_url", updatedUrl).apply()
     }
 
     fun updateSelectedTheme(theme: String) {

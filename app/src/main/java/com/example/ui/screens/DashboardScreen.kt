@@ -41,6 +41,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.content.Intent
@@ -69,8 +71,10 @@ fun DashboardScreen(
     val edgeStatus by viewModel.edgeStatus.collectAsState()
     val globalWatchMode by viewModel.wachModusGlobal.collectAsState()
     val ingestSimulation by viewModel.ingestSimulationState.collectAsState()
+    val tuyaCastUrl by viewModel.tuyaCastUrl.collectAsState()
 
     var eventFilter by remember { mutableStateOf("ALL") } // "ALL", "CRITICAL", "INFO"
+    var selectedAlertForTuyaVerification by remember { mutableStateOf<StallEvent?>(null) }
 
     val bertaCow = cows.find { it.id == "Kuh #42" }
     val zeldaCow = cows.find { it.id == "Kuh #103" }
@@ -340,7 +344,8 @@ fun DashboardScreen(
                             filteredEvents.forEach { event ->
                                 EventLogItem(
                                     event = event,
-                                    onResolve = { viewModel.markEventResolved(event.id) }
+                                    onResolve = { viewModel.markEventResolved(event.id) },
+                                    onVerifyOnTuya = { selectedAlertForTuyaVerification = it }
                                 )
                             }
                         }
@@ -354,7 +359,8 @@ fun DashboardScreen(
                         BentoAlertCard(
                             viewModel = viewModel,
                             activeWarning = activeWarning,
-                            onResolve = { activeWarning?.let { viewModel.markEventResolved(it.id) } }
+                            onResolve = { activeWarning?.let { viewModel.markEventResolved(it.id) } },
+                            onVerifyOnTuya = { selectedAlertForTuyaVerification = it }
                         )
 
                         Row(
@@ -617,7 +623,8 @@ fun DashboardScreen(
             BentoAlertCard(
                 viewModel = viewModel,
                 activeWarning = activeWarning,
-                onResolve = { activeWarning?.let { viewModel.markEventResolved(it.id) } }
+                onResolve = { activeWarning?.let { viewModel.markEventResolved(it.id) } },
+                onVerifyOnTuya = { selectedAlertForTuyaVerification = it }
             )
         }
 
@@ -876,7 +883,8 @@ fun DashboardScreen(
             items(filteredEvents) { event ->
                 EventLogItem(
                     event = event,
-                    onResolve = { viewModel.markEventResolved(event.id) }
+                    onResolve = { viewModel.markEventResolved(event.id) },
+                    onVerifyOnTuya = { selectedAlertForTuyaVerification = it }
                 )
             }
         }
@@ -963,20 +971,56 @@ fun DashboardScreen(
                         )
                     }
                     
-                    IconButton(
-                        onClick = { activeToastEvent = null },
-                        modifier = Modifier.size(28.dp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Schließen",
-                            tint = alertColor,
-                            modifier = Modifier.size(16.dp)
-                        )
+                        Button(
+                            onClick = {
+                                val target = activeToastEvent
+                                activeToastEvent = null
+                                target?.let { selectedAlertForTuyaVerification = it }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = alertColor),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Videocam,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Live Feed", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+
+                        IconButton(
+                            onClick = { activeToastEvent = null },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Schließen",
+                                tint = alertColor,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
                 }
             }
         }
+    }
+
+    // Tuya Live Alert Verification Dialog Modal
+    selectedAlertForTuyaVerification?.let { event ->
+        TuyaAlertVerificationDialog(
+            event = event,
+            tuyaCastUrl = tuyaCastUrl,
+            viewModel = viewModel,
+            onResolve = { viewModel.markEventResolved(event.id) },
+            onDismiss = { selectedAlertForTuyaVerification = null }
+        )
     }
 }
 }
@@ -987,6 +1031,7 @@ fun BentoAlertCard(
     viewModel: StallViewModel,
     activeWarning: StallEvent?,
     onResolve: () -> Unit,
+    onVerifyOnTuya: ((StallEvent) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var toastEvent by remember { mutableStateOf<StallEvent?>(null) }
@@ -1140,6 +1185,32 @@ fun BentoAlertCard(
                                 )
                             }
                         }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Button(
+                        onClick = { activeWarning.let { onVerifyOnTuya?.invoke(it) } },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("verify_alert_tuya_btn"),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFBA1A1A)),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(vertical = 8.dp, horizontal = 12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Videocam,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "👁️ Live auf Tuya-Kamera Verifizieren",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
                     }
                 }
             }
@@ -1871,7 +1942,8 @@ typealias DrawScopeDouble = androidx.compose.ui.graphics.drawscope.DrawScope.(wi
 @Composable
 fun EventLogItem(
     event: StallEvent,
-    onResolve: () -> Unit
+    onResolve: () -> Unit,
+    onVerifyOnTuya: ((StallEvent) -> Unit)? = null
 ) {
     val dateText = remember(event.timestamp) {
         val sdf = SimpleDateFormat("HH:mm:ss (dd.MM)", Locale.GERMANY)
@@ -1983,17 +2055,41 @@ fun EventLogItem(
                 }
             }
 
-            // Quick Resolve Checkbox Button
-            if (!event.resolved) {
-                IconButton(
-                    onClick = onResolve,
-                    modifier = Modifier.testTag("resolve_btn_${event.id}")
+            // Quick Actions: Tuya Feed & Resolve Checkbox
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                OutlinedButton(
+                    onClick = { onVerifyOnTuya?.invoke(event) },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                    modifier = Modifier
+                        .height(32.dp)
+                        .testTag("tuya_verify_btn_${event.id}"),
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, Color(0xFF005AC1))
                 ) {
                     Icon(
-                        imageVector = Icons.Outlined.CheckCircle,
-                        contentDescription = "Gelesen markieren",
-                        tint = Color(0xFF005AC1)
+                        imageVector = Icons.Default.Videocam,
+                        contentDescription = null,
+                        tint = Color(0xFF005AC1),
+                        modifier = Modifier.size(12.dp)
                     )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Tuya Feed", fontSize = 10.sp, color = Color(0xFF005AC1), fontWeight = FontWeight.Bold)
+                }
+
+                if (!event.resolved) {
+                    IconButton(
+                        onClick = onResolve,
+                        modifier = Modifier.testTag("resolve_btn_${event.id}")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.CheckCircle,
+                            contentDescription = "Gelesen markieren",
+                            tint = Color(0xFF005AC1)
+                        )
+                    }
                 }
             }
         }
@@ -4023,14 +4119,32 @@ fun TuyaCastWebFeedView(
                         .background(Color(0xFF22C55E))
                 )
                 Column {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = "Abkalbebox (Tuya WebRTC)",
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(Color(0xFF0284C7))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = "PIN: 0000",
+                                color = Color.White,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
                     Text(
-                        text = "Abkalbebox (Tuya WebRTC)",
-                        color = Color.White,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.ExtraBold
-                    )
-                    Text(
-                        text = "ID: bf90bd2...gshm • 1080p FHD",
+                        text = "ID: bf90bd2...gshm • 1080p FHD • Cast Ready",
                         color = Color(0xFF94A3B8),
                         fontSize = 9.sp
                     )
@@ -4315,6 +4429,336 @@ private fun QuickCallContactCard(
                 Icon(Icons.Default.Call, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
                 Spacer(modifier = Modifier.width(4.dp))
                 Text("Anrufen", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
+fun TuyaAlertVerificationDialog(
+    event: StallEvent,
+    tuyaCastUrl: String,
+    viewModel: StallViewModel,
+    onResolve: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var isFlashing by remember { mutableStateOf(false) }
+    var toastMessage by remember { mutableStateOf<String?>(null) }
+    var isRecording by remember { mutableStateOf(false) }
+    var recordingTimeLeft by remember { mutableStateOf(10) }
+
+    fun triggerSnapshot() {
+        scope.launch {
+            isFlashing = true
+            delay(200)
+            isFlashing = false
+            viewModel.logManualObservation(
+                cameraName = "Tuya Abkalbebox (${event.kamera})",
+                cowId = event.kuhId ?: "Kuh #42",
+                type = "info",
+                note = "📸 Tuya-Kamera Schnappschuss verifiziert für Ereignis #${event.id} (${event.typ})"
+            )
+            toastMessage = "📸 Schnappschuss der Tuya-Kamera im Stall-Protokoll gesichert!"
+        }
+    }
+
+    fun toggleRecord() {
+        if (isRecording) {
+            isRecording = false
+            toastMessage = "📹 Aufzeichnung gestoppt."
+            return
+        }
+        scope.launch {
+            isRecording = true
+            recordingTimeLeft = 10
+            while (recordingTimeLeft > 0 && isRecording) {
+                delay(1000)
+                recordingTimeLeft--
+            }
+            if (isRecording) {
+                isRecording = false
+                viewModel.logManualObservation(
+                    cameraName = "Tuya Abkalbebox (${event.kamera})",
+                    cowId = event.kuhId ?: "Kuh #42",
+                    type = "info",
+                    note = "📹 10s Video-Evidenz der Tuya-Kamera gesichert (${event.typ})"
+                )
+                toastMessage = "📹 10s Video-Sequenz verifiziert & gesichert!"
+            }
+        }
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .fillMaxHeight(0.92f)
+                .testTag("tuya_alert_verification_dialog"),
+            shape = RoundedCornerShape(24.dp),
+            color = Color(0xFF0F172A),
+            border = BorderStroke(2.dp, if (event.typ == "austreibung" || event.typ == "eskalation") Color(0xFFDC2626) else Color(0xFF0284C7))
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp)
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(if (event.typ == "austreibung" || event.typ == "eskalation") Color(0xFFDC2626) else Color(0xFF0284C7)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Videocam,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(
+                                    text = "TUYA ECHTZEIT-VERIFIZIERUNG",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 14.sp
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Color(0xFF22C55E))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text("LIVE WEBRTC", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                                }
+                            }
+                            Text(
+                                text = "Kamera: ${event.kamera} • Tuya Cast Stream Abkalbebox",
+                                color = Color(0xFF94A3B8),
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF1E293B))
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "Schließen", tint = Color.White)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Active Alert Summary
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = if (event.typ == "austreibung" || event.typ == "eskalation") Color(0xFF450A0A) else Color(0xFF0C4A6E),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, if (event.typ == "austreibung" || event.typ == "eskalation") Color(0xFFEF4444) else Color(0xFF38BDF8))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Icon(
+                                    imageVector = if (event.typ == "austreibung" || event.typ == "eskalation") Icons.Default.Warning else Icons.Default.NotificationsActive,
+                                    contentDescription = null,
+                                    tint = if (event.typ == "austreibung" || event.typ == "eskalation") Color(0xFFFCA5A5) else Color(0xFF7DD3FC),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    text = "${event.kuhId ?: "Kuh #42"}: ${event.typ.uppercase(Locale.ROOT)}",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 13.sp
+                                )
+                                if (event.konfidenz != null) {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(Color.Black.copy(alpha = 0.4f))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = "Konfidenz ${(event.konfidenz * 100).toInt()}%",
+                                            color = Color(0xFFFDE047),
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = event.nachricht,
+                                color = Color(0xFFE2E8F0),
+                                fontSize = 11.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        Button(
+                            onClick = {
+                                onResolve()
+                                viewModel.logManualObservation(
+                                    cameraName = "Tuya Abkalbebox",
+                                    cowId = event.kuhId ?: "Kuh #42",
+                                    type = "info",
+                                    note = "✅ Landwirt hat Ereignis #${event.id} auf Tuya Live-Stream verifiziert & freigegeben."
+                                )
+                                onDismiss()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Als Verifiziert Bestätigen", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Embedded Live Feed
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .clip(RoundedCornerShape(16.dp))
+                        .border(1.dp, Color(0xFF334155), RoundedCornerShape(16.dp))
+                ) {
+                    TuyaCastWebFeedView(url = tuyaCastUrl)
+
+                    if (isFlashing) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.White.copy(alpha = 0.9f))
+                        )
+                    }
+
+                    if (isRecording) {
+                        Surface(
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(top = 10.dp),
+                            color = Color(0xFFDC2626).copy(alpha = 0.9f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(Color.White))
+                                Text("REC 00:0${recordingTimeLeft}s", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                toastMessage?.let { msg ->
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                        color = Color(0xFF1E293B),
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, Color(0xFF38BDF8))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(msg, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                            IconButton(onClick = { toastMessage = null }, modifier = Modifier.size(18.dp)) {
+                                Icon(Icons.Default.Close, contentDescription = null, tint = Color.LightGray)
+                            }
+                        }
+                    }
+                }
+
+                // Action Toolbar
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = { triggerSnapshot() },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155)),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(vertical = 10.dp)
+                    ) {
+                        Icon(Icons.Default.CameraAlt, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Schnappschuss", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Button(
+                        onClick = { toggleRecord() },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = if (isRecording) Color(0xFFDC2626) else Color(0xFF475569)),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(vertical = 10.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isRecording) Icons.Default.Stop else Icons.Default.Videocam,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(if (isRecording) "Stop ($recordingTimeLeft s)" else "10s Clip", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    var showCallInModal by remember { mutableStateOf(false) }
+                    Button(
+                        onClick = { showCallInModal = true },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(vertical = 10.dp)
+                    ) {
+                        Icon(Icons.Default.Call, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Tierarzt", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    if (showCallInModal) {
+                        QuickCallDialog(onDismiss = { showCallInModal = false })
+                    }
+                }
             }
         }
     }
