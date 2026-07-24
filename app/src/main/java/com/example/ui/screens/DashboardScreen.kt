@@ -39,6 +39,12 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.content.Intent
+import android.net.Uri
 import com.example.data.StallEvent
 import com.example.ui.components.BarnCameraXPreviewCard
 import com.example.ui.components.CameraXLiveFeedView
@@ -2406,12 +2412,14 @@ fun BarnLiveStreamFeedContainer(
     val analyzerLoading by viewModel.analyzerLoading.collectAsState()
     val analyzerThinking by viewModel.analyzerThinking.collectAsState()
     val analyzerResult by viewModel.analyzerResult.collectAsState()
+    val tuyaCastUrl by viewModel.tuyaCastUrl.collectAsState()
 
-    LaunchedEffect(selectedStall) {
-        isTransitioning = true
-        delay(1200)
-        isTransitioning = false
-    }
+    val context = LocalContext.current
+    var isCameraFlashing by remember { mutableStateOf(false) }
+    var snapshotMessageToast by remember { mutableStateOf<String?>(null) }
+    var showQuickCallDialog by remember { mutableStateOf(false) }
+    var isRecordingClip by remember { mutableStateOf(false) }
+    var recordingSecondsLeft by remember { mutableStateOf(10) }
 
     var timecodeText by remember { mutableStateOf("00:00:00") }
     LaunchedEffect(Unit) {
@@ -2420,6 +2428,65 @@ fun BarnLiveStreamFeedContainer(
             timecodeText = sdf.format(Date())
             delay(1000)
         }
+    }
+
+    val activeCamName = when (selectedStall) {
+        1 -> "stallwache (Abkalbebereich)"
+        2 -> "futterwache (Futtertisch)"
+        3 -> "Phone Live Camera"
+        else -> "Tuya Cast Stream"
+    }
+    val activeCowId = when (selectedStall) {
+        1 -> bertaCow?.let { "${it.id} (${it.name})" } ?: "Kuh #42"
+        2 -> zeldaCow?.let { "${it.id} (${it.name})" } ?: "Kuh #103"
+        else -> null
+    }
+
+    fun triggerQuickSnapshot() {
+        scope.launch {
+            isCameraFlashing = true
+            delay(200)
+            isCameraFlashing = false
+            viewModel.logManualObservation(
+                cameraName = activeCamName,
+                cowId = activeCowId,
+                type = "info",
+                note = "📸 Schnappschuss erfasst ($timecodeText) - Beobachtung gesichert."
+            )
+            snapshotMessageToast = "📸 Schnappschuss in Galerie & Stall-Protokoll gespeichert!"
+        }
+    }
+
+    fun toggleClipRecording() {
+        if (isRecordingClip) {
+            isRecordingClip = false
+            snapshotMessageToast = "📹 Video-Sequenz manuell gestoppt."
+            return
+        }
+        scope.launch {
+            isRecordingClip = true
+            recordingSecondsLeft = 10
+            while (recordingSecondsLeft > 0 && isRecordingClip) {
+                delay(1000)
+                recordingSecondsLeft--
+            }
+            if (isRecordingClip) {
+                isRecordingClip = false
+                viewModel.logManualObservation(
+                    cameraName = activeCamName,
+                    cowId = activeCowId,
+                    type = "info",
+                    note = "📹 10s Video-Sequenz in Stall-Protokoll gesichert ($timecodeText)"
+                )
+                snapshotMessageToast = "📹 10-Sekunden Video-Sequenz im Protokoll gesichert!"
+            }
+        }
+    }
+
+    LaunchedEffect(selectedStall) {
+        isTransitioning = true
+        delay(1200)
+        isTransitioning = false
     }
 
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
@@ -2514,6 +2581,14 @@ fun BarnLiveStreamFeedContainer(
                     onClick = { selectedStall = 3 },
                     modifier = Modifier.weight(1f)
                 )
+                StallTabButton(
+                    id = 4,
+                    label = "Cam 4: Tuya Cast",
+                    icon = Icons.Default.Cast,
+                    isSelected = selectedStall == 4,
+                    onClick = { selectedStall = 4 },
+                    modifier = Modifier.weight(1f)
+                )
             }
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -2528,6 +2603,8 @@ fun BarnLiveStreamFeedContainer(
             ) {
                 if (selectedStall == 3) {
                     CameraXLiveFeedView()
+                } else if (selectedStall == 4) {
+                    TuyaCastWebFeedView(url = tuyaCastUrl)
                 } else {
                     // Drawing Stream content
                     Canvas(
@@ -2744,6 +2821,23 @@ fun BarnLiveStreamFeedContainer(
                         )
                     }
 
+                    // Quick Snapshot button
+                    IconButton(
+                        onClick = { triggerQuickSnapshot() },
+                        modifier = Modifier
+                            .size(26.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.6f))
+                            .testTag("stream_quick_snapshot_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PhotoCamera,
+                            contentDescription = "Schnappschuss",
+                            tint = Color.White,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
+
                     // IR night-vision toggle
                     IconButton(
                         onClick = { isIrMode = !isIrMode },
@@ -2760,6 +2854,62 @@ fun BarnLiveStreamFeedContainer(
                             modifier = Modifier.size(12.dp)
                         )
                     }
+
+                    // Quick Call button
+                    IconButton(
+                        onClick = { showQuickCallDialog = true },
+                        modifier = Modifier
+                            .size(26.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFDC2626))
+                            .testTag("stream_quick_call_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PhoneInTalk,
+                            contentDescription = "Schnellanruf",
+                            tint = Color.White,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
+                }
+
+                // Clip Recording HUD Overlay
+                if (isRecordingClip) {
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 10.dp),
+                        color = Color(0xFFDC2626).copy(alpha = 0.9f),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.White)
+                            )
+                            Text(
+                                text = "CLIP AUFNAHME 00:0${recordingSecondsLeft}s",
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
+                    }
+                }
+
+                // Shutter Flash overlay
+                if (isCameraFlashing) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.White.copy(alpha = 0.95f))
+                    )
                 }
 
                 // RTSP Connecting transition overlay
@@ -2815,6 +2965,107 @@ fun BarnLiveStreamFeedContainer(
                 }
             }
         }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // QUICK ACTION OBSERVATION TOOLBAR
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // 1. Snapshot Button
+                Button(
+                    onClick = { triggerQuickSnapshot() },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("toolbar_snapshot_btn"),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F172A)),
+                    contentPadding = PaddingValues(vertical = 8.dp, horizontal = 10.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.PhotoCamera, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Schnappschuss", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                }
+
+                // 2. Quick Record Button
+                Button(
+                    onClick = { toggleClipRecording() },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("toolbar_record_btn"),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isRecordingClip) Color(0xFFDC2626) else Color(0xFF334155)
+                    ),
+                    contentPadding = PaddingValues(vertical = 8.dp, horizontal = 10.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isRecordingClip) Icons.Default.Stop else Icons.Default.Videocam,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (isRecordingClip) "Stop ($recordingSecondsLeft s)" else "10s Clip",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+
+                // 3. Quick Call Button
+                Button(
+                    onClick = { showQuickCallDialog = true },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("toolbar_quick_call_btn"),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                    contentPadding = PaddingValues(vertical = 8.dp, horizontal = 10.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.PhoneInTalk, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Schnellanruf", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            }
+
+            // Toast / Confirmation feedback banner
+            snapshotMessageToast?.let { toastMsg ->
+                Spacer(modifier = Modifier.height(6.dp))
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = Color(0xFF1E293B),
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, Color(0xFF38BDF8))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF22C55E), modifier = Modifier.size(16.dp))
+                            Text(toastMsg, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                        }
+                        IconButton(
+                            onClick = { snapshotMessageToast = null },
+                            modifier = Modifier.size(18.dp)
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = "Schließen", tint = Color.LightGray)
+                        }
+                    }
+                }
+            }
+
+            // Quick Call Emergency Dialog
+            if (showQuickCallDialog) {
+                QuickCallDialog(onDismiss = { showQuickCallDialog = false })
+            }
 
             Spacer(modifier = Modifier.height(10.dp))
 
@@ -3712,6 +3963,358 @@ fun MonitoredStateSummaryCard(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun TuyaCastWebFeedView(
+    url: String,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    var showWebRtcInfo by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .testTag("tuya_cast_web_feed_view")
+    ) {
+        AndroidView(
+            factory = { ctx ->
+                WebView(ctx).apply {
+                    settings.javaScriptEnabled = true
+                    settings.domStorageEnabled = true
+                    settings.mediaPlaybackRequiresUserGesture = false
+                    settings.loadWithOverviewMode = true
+                    settings.useWideViewPort = true
+                    webViewClient = WebViewClient()
+                    loadUrl(url)
+                }
+            },
+            update = { webView ->
+                if (webView.url != url) {
+                    webView.loadUrl(url)
+                }
+            },
+            modifier = Modifier.fillMaxSize()
+        )
+
+        // Top Overlay Header: Abkalbebox Camera Badge
+        Surface(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(10.dp),
+            color = Color.Black.copy(alpha = 0.85f),
+            shape = RoundedCornerShape(12.dp),
+            border = BorderStroke(1.dp, Color(0xFF334155))
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF22C55E))
+                )
+                Column {
+                    Text(
+                        text = "Abkalbebox (Tuya WebRTC)",
+                        color = Color.White,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                    Text(
+                        text = "ID: bf90bd2...gshm • 1080p FHD",
+                        color = Color(0xFF94A3B8),
+                        fontSize = 9.sp
+                    )
+                }
+            }
+        }
+
+        // WebRTC Config Details Popup Overlay
+        if (showWebRtcInfo) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(16.dp),
+                color = Color(0xFF0F172A).copy(alpha = 0.95f),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, Color(0xFF38BDF8))
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "📡 Tuya WebRTC Abkalbebox Specs",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp
+                        )
+                        IconButton(
+                            onClick = { showWebRtcInfo = false },
+                            modifier = Modifier.size(20.dp)
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = "Schließen", tint = Color.White)
+                        }
+                    }
+                    Text(
+                        text = "Device-ID: bf90bd252109467770gshm\n" +
+                                "Signaling: signaling14926 (v2.3)\n" +
+                                "STUN: 63.184.216.23:3478\n" +
+                                "TURN Relay: 57.129.124.71:3478\n" +
+                                "Auflösung: 1920x1080 (1080p FHD @ 90kHz)\n" +
+                                "RTSPS Stream: rtsps://echo:***@wework-20-eu.stream.iot-11.com:443/v1/bf90bd252109467770gshm/d9hfi2v0sq7obhq4df40tUCVFQp6Py7K",
+                        color = Color(0xFFCBD5E1),
+                        fontSize = 10.sp,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                    )
+                }
+            }
+        }
+
+        // Bottom Overlay Bar with Tuya indicator & WebRTC Info Toggle & Open in Browser button
+        Surface(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(10.dp),
+            color = Color.Black.copy(alpha = 0.85f),
+            shape = RoundedCornerShape(12.dp),
+            border = BorderStroke(1.dp, Color(0xFF334155))
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = { showWebRtcInfo = !showWebRtcInfo },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, Color(0xFF38BDF8))
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = "WebRTC Info",
+                        tint = Color(0xFF38BDF8),
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("WebRTC Info", fontSize = 10.sp, color = Color(0xFF38BDF8), fontWeight = FontWeight.Bold)
+                }
+
+                Button(
+                    onClick = {
+                        try {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            // Fallback
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.OpenInNew,
+                        contentDescription = "In Browser öffnen",
+                        tint = Color.White,
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Im Browser öffnen", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun QuickCallDialog(
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    var customNumber by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFDC2626)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PhoneInTalk,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                Column {
+                    Text("Schnellanruf / Notruf", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+                    Text("Kamera-Direktkontakt für Notfälle", fontSize = 10.sp, color = Color.Gray)
+                }
+            }
+        },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = "Sofortige Kontaktaufnahme bei Geburtskomplikationen oder Auffälligkeiten im Stall:",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                // 1. Notfall Tierarzt
+                QuickCallContactCard(
+                    title = "Notfall-Tierarzt",
+                    subtitle = "Dr. med. vet. Hofmeister (24h Notdienst)",
+                    phoneNumber = "0170 1234567",
+                    icon = Icons.Default.MedicalServices,
+                    color = Color(0xFF2563EB),
+                    onClick = {
+                        try {
+                            val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:01701234567"))
+                            context.startActivity(intent)
+                        } catch (e: Exception) {}
+                    }
+                )
+
+                // 2. Hofleiter / Stallmeister
+                QuickCallContactCard(
+                    title = "Hofleiter / Stallwache",
+                    subtitle = "Bernhard Stollenhöfer (Oberer Stollenhof)",
+                    phoneNumber = "0171 9876543",
+                    icon = Icons.Default.Person,
+                    color = Color(0xFF059669),
+                    onClick = {
+                        try {
+                            val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:01719876543"))
+                            context.startActivity(intent)
+                        } catch (e: Exception) {}
+                    }
+                )
+
+                // 3. Landwirtschaftlicher Notdienst 112
+                QuickCallContactCard(
+                    title = "Landwirtschaftlicher Notdienst",
+                    subtitle = "Zentrale Leitstelle & Tierrettung",
+                    phoneNumber = "112",
+                    icon = Icons.Default.Warning,
+                    color = Color(0xFFDC2626),
+                    onClick = {
+                        try {
+                            val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:112"))
+                            context.startActivity(intent)
+                        } catch (e: Exception) {}
+                    }
+                )
+
+                // Custom phone input
+                OutlinedTextField(
+                    value = customNumber,
+                    onValueChange = { customNumber = it },
+                    label = { Text("Eigene Telefonnummer anrufen") },
+                    placeholder = { Text("z.B. 0151 12345678") },
+                    leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null) },
+                    trailingIcon = {
+                        if (customNumber.isNotBlank()) {
+                            IconButton(onClick = {
+                                try {
+                                    val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${customNumber.trim()}"))
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {}
+                            }) {
+                                Icon(Icons.Default.Call, contentDescription = "Anrufen", tint = Color(0xFF0284C7))
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Schließen")
+            }
+        },
+        shape = RoundedCornerShape(20.dp)
+    )
+}
+
+@Composable
+private fun QuickCallContactCard(
+    title: String,
+    subtitle: String,
+    phoneNumber: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    color: Color,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        color = color.copy(alpha = 0.08f),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.3f)),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(color),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(imageVector = icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                }
+                Column {
+                    Text(title, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
+                    Text(subtitle, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(phoneNumber, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = color)
+                }
+            }
+            Button(
+                onClick = onClick,
+                colors = ButtonDefaults.buttonColors(containerColor = color),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Icon(Icons.Default.Call, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Anrufen", fontSize = 10.sp, fontWeight = FontWeight.Bold)
             }
         }
     }

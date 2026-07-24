@@ -53,6 +53,27 @@ class StallViewModel(application: Application) : AndroidViewModel(application) {
     private val _tuyaApiKey = MutableStateFlow(prefs.getString("tuya_api_key", BuildConfig.TUYA_API_KEY) ?: BuildConfig.TUYA_API_KEY)
     val tuyaApiKey = _tuyaApiKey.asStateFlow()
 
+    private val DEFAULT_TUYA_CAST_URL = "https://eu.device.tuya.ai/m/universal-app-link/084e213f-8b84-47dc-bfbd-aa4113a3722a/cast/run?project_id=289769812&home_id=289769812&__customLayout__=HIDE_SIDER%2CHIDE_HEADER"
+    private val _tuyaCastUrl = MutableStateFlow(prefs.getString("tuya_cast_url", DEFAULT_TUYA_CAST_URL) ?: DEFAULT_TUYA_CAST_URL)
+    val tuyaCastUrl = _tuyaCastUrl.asStateFlow()
+
+    private val _tuyaAbkalbeboxDeviceId = MutableStateFlow(prefs.getString("tuya_abkalbebox_device_id", "bf90bd252109467770gshm") ?: "bf90bd252109467770gshm")
+    val tuyaAbkalbeboxDeviceId = _tuyaAbkalbeboxDeviceId.asStateFlow()
+
+    private val _tuyaRtspsUrl = MutableStateFlow(
+        prefs.getString("tuya_rtsps_url", "rtsps://echo:MjomfT2R4Q92Am4k8e9xkmspHi0R2Knb@wework-20-eu.stream.iot-11.com:443/v1/bf90bd252109467770gshm/d9hfi2v0sq7obhq4df40tUCVFQp6Py7K?signInfo=ONCeF5hrYuAccTJfL2x6vNUN_2Q4h75fGXCGDeSGveaJGpBfxTybG4XliT0iJi0YbiQxDmXCB-BcRUMuCxOYN2p9mMjl9Hzp47t68M3pckFcfquoPnAU8-iJXaiEgFb4PzNnu2xxLhOYuVpOvL8XdS2uddYpNxG8hyrstoQuneM") ?: "rtsps://echo:MjomfT2R4Q92Am4k8e9xkmspHi0R2Knb@wework-20-eu.stream.iot-11.com:443/v1/bf90bd252109467770gshm/d9hfi2v0sq7obhq4df40tUCVFQp6Py7K?signInfo=ONCeF5hrYuAccTJfL2x6vNUN_2Q4h75fGXCGDeSGveaJGpBfxTybG4XliT0iJi0YbiQxDmXCB-BcRUMuCxOYN2p9mMjl9Hzp47t68M3pckFcfquoPnAU8-iJXaiEgFb4PzNnu2xxLhOYuVpOvL8XdS2uddYpNxG8hyrstoQuneM"
+    )
+    val tuyaRtspsUrl = _tuyaRtspsUrl.asStateFlow()
+
+    private val _tuyaSignalingId = MutableStateFlow("signaling14926")
+    val tuyaSignalingId = _tuyaSignalingId.asStateFlow()
+
+    private val _tuyaStunServer = MutableStateFlow("stun:63.184.216.23:3478")
+    val tuyaStunServer = _tuyaStunServer.asStateFlow()
+
+    private val _tuyaTurnServer = MutableStateFlow("turn:57.129.124.71:3478")
+    val tuyaTurnServer = _tuyaTurnServer.asStateFlow()
+
     private val _customApiKey = MutableStateFlow(prefs.getString("custom_api_key", "") ?: "")
     val customApiKey = _customApiKey.asStateFlow()
 
@@ -140,6 +161,11 @@ class StallViewModel(application: Application) : AndroidViewModel(application) {
         prefs.edit().putString("custom_api_key", key).apply()
     }
 
+    fun updateTuyaCastUrl(url: String) {
+        _tuyaCastUrl.value = url
+        prefs.edit().putString("tuya_cast_url", url).apply()
+    }
+
     fun updateSelectedTheme(theme: String) {
         _selectedTheme.value = theme
         prefs.edit().putString("selected_theme", theme).apply()
@@ -210,6 +236,20 @@ class StallViewModel(application: Application) : AndroidViewModel(application) {
     fun clearAllEvents() {
         viewModelScope.launch {
             repository.clearAllEvents()
+        }
+    }
+
+    fun logManualObservation(cameraName: String, cowId: String?, type: String, note: String) {
+        viewModelScope.launch {
+            val newEvent = StallEvent(
+                typ = type,
+                kuhId = cowId ?: "Stallkamera",
+                kamera = cameraName,
+                nachricht = note,
+                konfidenz = 1.0,
+                resolved = true
+            )
+            repository.insertEvent(newEvent)
         }
     }
 
